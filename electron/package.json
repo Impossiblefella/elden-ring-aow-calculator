@@ -52,8 +52,8 @@
     ],
     "publish": {
       "provider": "github",
-      "owner": "",
-      "repo": ""
+      "owner": "Impossiblefella",
+      "repo": "elden-ring-aow-calculator"
     }
   },
   "dependencies": {
