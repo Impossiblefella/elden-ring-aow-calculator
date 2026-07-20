@@ -1,0 +1,62 @@
+{
+  "name": "elden-ring-aow-calculator",
+  "version": "1.0.1",
+  "description": "Elden Ring Ashes of War Damage Calculator",
+  "main": "src/main.cjs",
+  "author": "ER Calc",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "build:web": "cd ../packages/web && npx vite build && cd ../../electron && rm -rf web-dist && mkdir -p web-dist && cp -r ../packages/web/dist/* web-dist/",
+    "build:server": "npx esbuild ../packages/server/src/index.ts --bundle --platform=node --format=cjs --target=node18 --outfile=server-bundle.cjs",
+    "build:all": "cd ../packages/shared && npx tsc && cd ../packages/server && npx tsc && cd ../packages/web && npx vite build && cd ../../electron && rm -rf web-dist && mkdir -p web-dist && cp -r ../packages/web/dist/* web-dist/ && cp ../packages/server/src/data/regulation-vanilla-v1.14.json data/ && npx esbuild ../packages/server/src/index.ts --bundle --platform=node --format=cjs --target=node18 --outfile=server-bundle.cjs",
+    "pack": "npm run build:all && electron-builder --win",
+    "publish": "npm run build:all && electron-builder --win --publish always",
+    "clean": "rm -rf web-dist data/regulation-vanilla-v1.14.json ../release"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.24.0"
+  },
+  "build": {
+    "appId": "com.eldenring.aowcalc",
+    "productName": "Elden Ring AoW Calculator",
+    "directories": {
+      "output": "../release"
+    },
+    "files": [
+      "src/**/*",
+      "server-bundle.cjs",
+      "web-dist/**/*",
+      "data/regulation-vanilla-v1.14.json",
+      "node_modules/electron-updater/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ER AoW Calculator"
+    },
+    "asarUnpack": [
+      "server-bundle.cjs",
+      "web-dist/**/*",
+      "data/regulation-vanilla-v1.14.json",
+      "node_modules/electron-updater/**/*"
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "",
+      "repo": ""
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

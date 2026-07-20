@@ -1,0 +1,25 @@
+{
+  "name": "@er/server",
+  "version": "1.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/index.ts",
+    "parse-regulation": "tsx scripts/build-db.ts ../regulation.bin"
+  },
+  "dependencies": {
+    "@er/shared": "*",
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.4",
+    "typescript": "^5.9.2",
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/morgan": "^1.9.9",
+    "@types/node": "^22.10.10"
+  }
+}

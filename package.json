@@ -1,0 +1,24 @@
+{
+  "name": "er-aow-calc",
+  "version": "1.0.1",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -ws",
+    "dev": "concurrently -k -n server,web \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w @er/shared -w @er/server",
+    "dev:web": "npm run dev -w @er/web",
+    "init-db": "node packages/server/scripts/build-db.mjs",
+    "test": "npm test -w @er/shared"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4",
+    "electron": "^43.1.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
+    "wait-on": "^9.0.10"
+  }
+}
