@@ -1,6 +1,6 @@
 {
   "name": "elden-ring-aow-calculator",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Elden Ring Ashes of War Damage Calculator",
   "main": "src/main.cjs",
   "author": "ER Calc",

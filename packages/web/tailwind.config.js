@@ -9,6 +9,7 @@ export default {
           surface: 'var(--er-surface)',
           border: 'var(--er-border)',
           gold: 'var(--er-gold)',
+          'gold-bright': 'var(--er-gold-bright)',
           accent: 'var(--er-accent)',
           fg: 'var(--er-fg)',
           muted: 'var(--er-muted)',
@@ -16,6 +17,14 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        er: ['Cinzel', 'Optimus Princeps', 'serif'],
+      },
+      animation: {
+        'fade-in': 'fadeIn 0.3s ease-out',
+        'fade-in-up': 'fadeInUp 0.4s ease-out',
+        'slide-in-left': 'slideInLeft 0.3s ease-out',
+        'pulse-gold': 'pulseGold 2s ease-in-out infinite',
+        'spin-gold': 'spinGold 1s linear infinite',
       },
     },
   },

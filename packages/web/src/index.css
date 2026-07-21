@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -10,9 +12,13 @@
   --er-surface: #161616;
   --er-border: #2a2a2a;
   --er-gold: #d4af37;
+  --er-gold-bright: #f0d060;
   --er-accent: #8b7355;
   --er-fg: #e5e5e5;
   --er-muted: #888;
+  --er-gold-grad: linear-gradient(135deg, #d4af37 0%, #f0d060 40%, #c9a040 60%, #d4af37 100%);
+  --er-glow: 0 0 12px rgba(212, 175, 55, 0.25);
+  --er-card-glow: 0 0 0 1px rgba(212, 175, 55, 0.15), 0 4px 20px rgba(0, 0, 0, 0.4);
 }
 
 /* Light theme */
@@ -22,9 +28,13 @@
   --er-surface: #ffffff;
   --er-border: #ddd5c8;
   --er-gold: #b8902e;
+  --er-gold-bright: #d4af37;
   --er-accent: #8b7355;
   --er-fg: #333333;
   --er-muted: #888;
+  --er-gold-grad: linear-gradient(135deg, #b8902e 0%, #d4af37 40%, #a07820 60%, #b8902e 100%);
+  --er-glow: 0 0 12px rgba(184, 144, 46, 0.2);
+  --er-card-glow: 0 0 0 1px rgba(184, 144, 46, 0.12), 0 4px 20px rgba(0, 0, 0, 0.08);
 }
 
 /* In light theme, remap gray-* text colors so dark-on-light is readable */
@@ -44,23 +54,252 @@
 .theme-light .text-yellow-400 { color: #990 !important; }
 .theme-light .text-yellow-500 { color: #880 !important; }
 
+/* ── Base ───────────────────────────────────────────────────────────────── */
 body {
   font-family: 'Inter', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   background: var(--er-bg);
   color: var(--er-fg);
+  position: relative;
 }
 
-/* Custom scrollbar */
+/* Subtle noise overlay for dark theme — feels like aged parchment/leather */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' /%3E%3C/svg%3E");
+}
+
+.theme-light body::before { opacity: 0.012; }
+
+/* ── Elden Ring font for headers ────────────────────────────────────────── */
+.font-er {
+  font-family: 'Cinzel', 'Optimus Princeps', serif;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+/* ── Gold gradient text ────────────────────────────────────────────────── */
+.text-gold-grad {
+  background: var(--er-gold-grad);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Gold gradient button ──────────────────────────────────────────────── */
+.btn-gold {
+  background: var(--er-gold-grad);
+  color: #1a1a1a !important;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.2);
+}
+.btn-gold:hover {
+  box-shadow: 0 4px 16px rgba(212, 175, 55, 0.35), var(--er-glow);
+  transform: translateY(-1px);
+}
+.btn-gold:active { transform: translateY(0); }
+
+/* ── Card glow on hover ─────────────────────────────────────────────────── */
+.card-glow {
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+.card-glow:hover {
+  border-color: rgba(212, 175, 55, 0.4) !important;
+  box-shadow: var(--er-card-glow);
+}
+
+/* ── Glassmorphism panel ───────────────────────────────────────────────── */
+.glass {
+  background: rgba(22, 22, 22, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+.theme-light .glass {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* ── Animations ────────────────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in-up { animation: fadeInUp 0.4s ease-out forwards; }
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-in-left { animation: slideInLeft 0.3s ease-out forwards; }
+
+@keyframes slideOutLeft {
+  from { opacity: 1; transform: translateX(0); }
+  to { opacity: 0; transform: translateX(-20px); }
+}
+.animate-slide-out-left { animation: slideOutLeft 0.2s ease-in forwards; }
+
+@keyframes pulseGold {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0); }
+}
+.animate-pulse-gold { animation: pulseGold 2s ease-in-out infinite; }
+
+@keyframes spinGold {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.animate-spin-gold { animation: spinGold 1s linear infinite; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-shimmer {
+  background: linear-gradient(90deg,
+    transparent 0%,
+    rgba(212, 175, 55, 0.08) 50%,
+    transparent 100%);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+/* Row stagger — each row animates with a slight delay */
+@keyframes rowStagger {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.row-stagger { animation: rowStagger 0.3s ease-out forwards; opacity: 0; }
+
+/* ── Sortable header hover glow ─────────────────────────────────────────── */
+th.sortable { transition: color 0.2s ease, text-shadow 0.2s ease; }
+th.sortable:hover {
+  color: var(--er-gold) !important;
+  text-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+}
+
+/* ── Custom range slider with gold fill ────────────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--er-border);
+  outline: none;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--er-gold-grad);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.5);
+  transition: transform 0.15s ease;
+}
+input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: var(--er-gold);
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(212, 175, 55, 0.5);
+}
+
+/* ── Custom checkbox ────────────────────────────────────────────────────── */
+input[type="checkbox"].er-check {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--er-border);
+  border-radius: 3px;
+  background: var(--er-bg);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+input[type="checkbox"].er-checkbox:checked {
+  background: var(--er-gold-grad);
+  border-color: var(--er-gold);
+}
+input[type="checkbox"].er-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid #1a1a1a;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input[type="checkbox"].er-checkbox:hover {
+  border-color: var(--er-gold);
+  box-shadow: var(--er-glow);
+}
+
+/* ── Damage bar (for compare mode) ──────────────────────────────────────── */
+.dmg-bar {
+  display: inline-block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--er-gold-grad);
+  transition: width 0.5s ease-out;
+  vertical-align: middle;
+}
+
+/* ── Tooltip ───────────────────────────────────────────────────────────── */
+.er-tooltip { position: relative; }
+.er-tooltip[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: var(--er-surface);
+  border: 1px solid var(--er-border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.er-tooltip:hover[data-tip]::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-8px);
+}
+
+/* ── Custom scrollbar ───────────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: var(--er-bg); }
 ::-webkit-scrollbar-thumb { background: var(--er-border); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--er-accent); }
 
-/* Number input arrows */
+/* ── Number input arrows ────────────────────────────────────────────────── */
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
 }
 input[type=number] { -moz-appearance: textfield; }
+
+/* Transition utility for interactive elements */
+.transition-er { transition: all 0.2s ease; }

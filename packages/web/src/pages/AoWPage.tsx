@@ -4,7 +4,6 @@
  * Two modes:
  *  - 'rank': Pick an Ash of War, see ALL compatible weapons ranked by metric
  *  - 'compare': Pick an Ash of War, see a comparison table with sortable columns
- *               (like tarnished.dev's weapon calculator but for AoW damage)
  */
 import { useState, useEffect, useMemo } from 'react';
 import { useBuild } from '../App';
@@ -51,6 +50,16 @@ function getValue(r: RankResult, key: SortKey): number | string {
   if (key === 'stance') return r.stance;
   if (key === 'dps') return r.dps;
   return 0;
+}
+
+// ── Loading spinner (gold ring) ───────────────────────────────────────────────
+function GoldSpinner({ size = 24 }: { size?: number }) {
+  return (
+    <div
+      className="animate-spin-gold inline-block rounded-full border-2 border-er-border"
+      style={{ width: size, height: size, borderTopColor: 'var(--er-gold)', borderRadius: '50%' }}
+    />
+  );
 }
 
 export function AoWPage() {
@@ -100,7 +109,7 @@ export function AoWPage() {
     if (selectedAsh !== null) runRank();
   }, [selectedAsh, metric, enemyId, stats, upgradeLevel, twoHanding, buffIds]);
 
-  // Client-side filters: search + weapon type
+  // Client-side filters
   const filteredResults = useMemo(() => {
     let rows = results;
     if (searchTerm.trim()) {
@@ -140,6 +149,9 @@ export function AoWPage() {
     return Array.from(set).sort();
   }, [results]);
 
+  // Find max total for relative bar widths
+  const maxTotal = useMemo(() => Math.max(...results.map(r => r.total), 1), [results]);
+
   const exportCSV = () => {
     const headers = ['Rank', 'Weapon', 'Type', 'Affinity', 'Total', 'Projectile', 'Status', 'Stance', 'DPS'];
     const lines = [headers.join(',')];
@@ -162,19 +174,19 @@ export function AoWPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-er-gold">Ash of War Damage Calculator</h2>
+        <h2 className="text-lg font-er text-gold-grad">Ash of War Damage Calculator</h2>
         <span className="text-xs text-gray-500">{ashes.length} Ashes of War available</span>
       </div>
 
       {/* Controls */}
-      <div className="bg-er-surface rounded-lg border border-er-border p-4 space-y-3">
+      <div className="bg-er-surface rounded-lg border border-er-border p-4 space-y-3 card-glow">
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-xs text-gray-400 mb-1">Ash of War</label>
             <select
               value={selectedAsh ?? ''}
               onChange={(e) => setSelectedAsh(e.target.value ? parseInt(e.target.value) : null)}
-              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 focus:border-er-gold focus:outline-none min-w-[200px]"
+              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none min-w-[200px]"
             >
               <option value="">Select an Ash of War...</option>
               {ashes.map(a => (
@@ -189,7 +201,7 @@ export function AoWPage() {
             <select
               value={enemyId}
               onChange={(e) => setEnemyId(e.target.value)}
-              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 focus:border-er-gold focus:outline-none min-w-[180px]"
+              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none min-w-[180px]"
             >
               <option value="">No enemy (raw damage)</option>
               {enemies.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
@@ -200,7 +212,7 @@ export function AoWPage() {
             <select
               value={metric}
               onChange={(e) => setMetric(e.target.value as Metric)}
-              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 focus:border-er-gold focus:outline-none"
+              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none"
             >
               {METRICS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
@@ -210,8 +222,8 @@ export function AoWPage() {
               <button
                 key={m}
                 onClick={() => setMode(m)}
-                className={`px-3 py-1.5 rounded text-sm ${
-                  mode === m ? 'bg-er-gold text-er-bg font-semibold' : 'bg-er-bg border border-er-border text-gray-300 hover:border-er-gold'
+                className={`px-3 py-1.5 rounded text-sm transition-er ${
+                  mode === m ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-300 hover:border-er-gold card-glow'
                 }`}
               >
                 {m === 'rank' ? '🏆 Ranked' : '📋 Compare'}
@@ -221,21 +233,32 @@ export function AoWPage() {
         </div>
       </div>
 
+      {/* Loading state */}
+      {loading && (
+        <div className="bg-er-surface rounded-lg border border-er-border p-8 text-center flex items-center justify-center gap-3 animate-fade-in">
+          <GoldSpinner size={28} />
+          <span className="text-er-muted text-sm">Ranking weapons...</span>
+        </div>
+      )}
+
+      {/* Error */}
       {error && (
-        <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3 text-sm text-red-300">
+        <div className="bg-red-900/20 border border-red-700/50 rounded-lg p-3 text-sm text-red-300 animate-fade-in">
           {error}
         </div>
       )}
 
-      {!selectedAsh && (
-        <div className="bg-er-surface rounded-lg border border-er-border p-8 text-center text-gray-500">
-          Select an Ash of War above to rank every compatible weapon by damage.
+      {/* Empty state */}
+      {!selectedAsh && !loading && (
+        <div className="bg-er-surface rounded-lg border border-er-border p-8 text-center text-gray-500 animate-fade-in">
+          <p className="text-4xl mb-3">⚔️</p>
+          <p>Select an Ash of War above to rank every compatible weapon by damage.</p>
         </div>
       )}
 
-      {/* Filter bar (shown when results exist) */}
-      {results.length > 0 && (
-        <div className="bg-er-surface rounded-lg border border-er-border p-3 flex flex-wrap gap-3 items-end">
+      {/* Filter bar */}
+      {results.length > 0 && !loading && (
+        <div className="bg-er-surface rounded-lg border border-er-border p-3 flex flex-wrap gap-3 items-end card-glow animate-fade-in">
           <div>
             <label className="text-xs text-er-muted block mb-1">Search</label>
             <input
@@ -243,7 +266,7 @@ export function AoWPage() {
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               placeholder="Weapon name..."
-              className="px-2 py-1 bg-er-bg border border-er-border rounded text-sm w-48"
+              className="px-2 py-1 bg-er-bg border border-er-border rounded text-sm w-48 transition-er focus:border-er-gold focus:outline-none"
             />
           </div>
           <div>
@@ -251,7 +274,7 @@ export function AoWPage() {
             <select
               value={weaponTypeFilter}
               onChange={e => setWeaponTypeFilter(e.target.value)}
-              className="px-2 py-1 bg-er-bg border border-er-border rounded text-sm w-40"
+              className="px-2 py-1 bg-er-bg border border-er-border rounded text-sm w-40 transition-er focus:border-er-gold focus:outline-none"
             >
               <option value="">All</option>
               {weaponTypeOptions.map(t => <option key={t} value={t}>{t}</option>)}
@@ -259,22 +282,23 @@ export function AoWPage() {
           </div>
           <button
             onClick={exportCSV}
-            className="ml-auto px-3 py-1 bg-er-gold/20 border border-er-gold/50 text-er-gold rounded text-sm hover:bg-er-gold/30"
+            className="ml-auto px-3 py-1 bg-er-gold/20 border border-er-gold/50 text-er-gold rounded text-sm hover:bg-er-gold/30 transition-er"
           >
             ⬇ Export CSV
           </button>
           <div className="text-xs text-er-muted">
             Showing <span className="text-er-fg font-semibold">{Math.min(limit, sortedResults.length)}</span> of {sortedResults.length}
+            {searchTerm.trim() && <span className="ml-1 text-er-gold animate-fade-in">({sortedResults.length} matching "{searchTerm}")</span>}
           </div>
         </div>
       )}
 
-      {/* Results table (shared by both modes, just different default sort) */}
-      {results.length > 0 && (
-        <div className="bg-er-surface rounded-lg border border-er-border overflow-hidden">
+      {/* Results table */}
+      {results.length > 0 && !loading && (
+        <div className="bg-er-surface rounded-lg border border-er-border overflow-hidden card-glow animate-fade-in-up">
           <div className="px-4 py-2 border-b border-er-border text-xs text-gray-400">
             {results.length} compatible weapons • Ranked by{' '}
-            <span className="text-er-gold font-semibold">
+            <span className="text-er-gold font-semibold font-er">
               {METRICS.find(m => m.value === metric)?.label}
             </span>
             {enemyId && <span className="ml-2">vs <span className="text-er-gold">{enemies.find(e => e.id === enemyId)?.name}</span></span>}
@@ -288,7 +312,7 @@ export function AoWPage() {
                     <th
                       key={key}
                       onClick={() => handleSort(key)}
-                      className={`py-2 px-3 cursor-pointer hover:text-er-gold ${
+                      className={`sortable py-2 px-3 cursor-pointer ${
                         ['total', 'projectile', 'status', 'stance', 'dps', 'rank'].includes(key) ? 'text-right' : 'text-left'
                       } ${sortKey === key ? 'text-er-gold' : ''}`}
                     >
@@ -296,23 +320,29 @@ export function AoWPage() {
                     </th>
                   ))}
                   <th className="py-2 px-3 text-left">Breakdown</th>
+                  <th className="py-2 px-3 text-left">Relative</th>
                 </tr>
               </thead>
               <tbody>
-                {displayResults.map(r => (
+                {displayResults.map((r, i) => (
                   <tr
                     key={r.weaponId}
-                    className={`border-b border-er-border/50 hover:bg-er-border/20 transition-colors ${
+                    className={`row-stagger border-b border-er-border/50 hover:bg-er-gold/5 transition-er ${
                       r.rank <= 3 ? 'bg-er-gold/5' : ''
                     }`}
+                    style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
                   >
-                    <td className="py-1.5 px-3 text-er-gold font-bold text-right">
-                      {r.rank <= 3 ? `#${r.rank}` : r.rank}
+                    <td className="py-1.5 px-3 text-right">
+                      <span className={`font-bold ${r.rank <= 3 ? 'text-gold-grad' : 'text-er-gold'}`}>
+                        {r.rank <= 3 ? `#${r.rank}` : r.rank}
+                      </span>
                     </td>
                     <td className="py-1.5 px-3 font-medium text-gray-200">{r.weaponName}</td>
                     <td className="py-1.5 px-3 text-gray-400">{r.weaponType}</td>
                     <td className="py-1.5 px-3 text-gray-400">{r.affinityName}</td>
-                    <td className="py-1.5 px-3 text-right text-gray-100 font-semibold">{r.total.toFixed(1)}</td>
+                    <td className="py-1.5 px-3 text-right text-gray-100 font-semibold">
+                      <span className={r.rank === 1 ? 'text-gold-grad' : ''}>{r.total.toFixed(1)}</span>
+                    </td>
                     <td className="py-1.5 px-3 text-right text-gray-400">{r.projectile > 0 ? r.projectile.toFixed(1) : '—'}</td>
                     <td className="py-1.5 px-3 text-right text-gray-400">{r.status > 0 ? r.status.toFixed(0) : '—'}</td>
                     <td className="py-1.5 px-3 text-right text-gray-400">{r.stance > 0 ? r.stance.toFixed(0) : '—'}</td>
@@ -323,6 +353,19 @@ export function AoWPage() {
                         .map(([k, v]) => `${DMG_NAMES[Number(k)] ?? k}:${v.toFixed(0)}`)
                         .join('  ')}
                     </td>
+                    {/* Relative damage bar */}
+                    <td className="py-1.5 px-3 text-left min-w-[80px]">
+                      <div className="h-1.5 bg-er-bg rounded-full overflow-hidden inline-block w-20">
+                        <div
+                          className="h-full rounded-full transition-all duration-500 ease-out"
+                          style={{
+                            width: `${(r.total / maxTotal) * 100}%`,
+                            background: r.rank === 1 ? 'var(--er-gold-grad)' : 'var(--er-accent)',
+                            boxShadow: r.rank === 1 ? 'var(--er-glow)' : 'none',
+                          }}
+                        />
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -332,7 +375,7 @@ export function AoWPage() {
             <div className="p-3 text-center border-t border-er-border">
               <button
                 onClick={() => setLimit(limit + 100)}
-                className="px-4 py-2 bg-er-bg border border-er-border rounded text-sm hover:border-er-gold"
+                className="px-4 py-2 bg-er-bg border border-er-border rounded text-sm hover:border-er-gold transition-er card-glow"
               >
                 Load 100 more ({sortedResults.length - limit} remaining)
               </button>

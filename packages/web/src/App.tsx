@@ -10,7 +10,7 @@
  * and app restarts.
  */
 import { useEffect, useState, useCallback, createContext, useContext } from 'react';
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { api, type WeaponListItem, type BuffInfo } from './api';
 import { CharacterBuilder, defaultStats, type CharStats } from './components/CharacterBuilder';
 import { ARPage } from './pages/ARPage';
@@ -116,21 +116,36 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ── Animated route wrapper (fade/slide on page change) ────────────────────────
+
+function AnimatedRoutes() {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="animate-fade-in-up">
+      <Routes location={location}>
+        <Route path="/" element={<ARPage />} />
+        <Route path="/ar" element={<ARPage />} />
+        <Route path="/aow" element={<AoWPage />} />
+      </Routes>
+    </div>
+  );
+}
+
 // ── Nav bar ──────────────────────────────────────────────────────────────────
 
 function NavBar() {
   const { serverStatus, upgradeLevel, setUpgradeLevel, twoHanding, setTwoHanding } = useBuild();
 
   return (
-    <header className="border-b border-er-border bg-er-surface/50 sticky top-0 z-20 backdrop-blur">
+    <header className="glass border-b border-er-border sticky top-0 z-20">
       <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-er-gold tracking-wide">
+          <h1 className="text-lg font-er text-gold-grad tracking-wide">
             ⚔ Elden Ring Calculator
           </h1>
-          <span className={`text-xs px-2 py-0.5 rounded-full ${
+          <span className={`text-xs px-2 py-0.5 rounded-full transition-er ${
             serverStatus === 'online' ? 'bg-green-900/40 text-green-400' :
-            serverStatus === 'connecting' ? 'bg-yellow-900/40 text-yellow-400' :
+            serverStatus === 'connecting' ? 'bg-yellow-900/40 text-yellow-400 animate-pulse' :
             'bg-red-900/40 text-red-400'
           }`}>
             {serverStatus}
@@ -140,10 +155,10 @@ function NavBar() {
             <NavLink
               to="/ar"
               className={({ isActive }) =>
-                `px-3 py-1 text-sm font-medium rounded transition-colors ${
+                `px-3 py-1 text-sm font-medium rounded transition-er ${
                   isActive
-                    ? 'bg-er-gold text-er-bg'
-                    : 'text-gray-400 hover:text-gray-300 hover:bg-er-border/30'
+                    ? 'btn-gold'
+                    : 'text-gray-400 hover:text-er-gold hover:bg-er-border/20'
                 }`
               }
             >
@@ -152,10 +167,10 @@ function NavBar() {
             <NavLink
               to="/aow"
               className={({ isActive }) =>
-                `px-3 py-1 text-sm font-medium rounded transition-colors ${
+                `px-3 py-1 text-sm font-medium rounded transition-er ${
                   isActive
-                    ? 'bg-er-gold text-er-bg'
-                    : 'text-gray-400 hover:text-gray-300 hover:bg-er-border/30'
+                    ? 'btn-gold'
+                    : 'text-gray-400 hover:text-er-gold hover:bg-er-border/20'
                 }`
               }
             >
@@ -173,7 +188,9 @@ function NavBar() {
               max={25}
               value={upgradeLevel}
               onChange={(e) => setUpgradeLevel(parseInt(e.target.value))}
-              className="accent-er-gold"
+              style={{
+                background: `linear-gradient(to right, var(--er-gold) ${(upgradeLevel / 25) * 100}%, var(--er-border) ${(upgradeLevel / 25) * 100}%)`,
+              }}
             />
             <span className="text-er-gold font-semibold w-8">+{upgradeLevel}</span>
           </label>
@@ -182,7 +199,7 @@ function NavBar() {
               type="checkbox"
               checked={twoHanding}
               onChange={(e) => setTwoHanding(e.target.checked)}
-              className="accent-er-gold"
+              className="er-checkbox"
             />
             <span className="text-gray-400">2H</span>
           </label>
@@ -226,15 +243,14 @@ function applyTheme(theme: 'dark' | 'light') {
 function SettingsBox() {
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
 
-  // Apply theme on mount and when it changes.
   useEffect(() => {
     applyTheme(theme);
     try { localStorage.setItem(THEME_KEY, theme); } catch {}
   }, [theme]);
 
   return (
-    <div className="bg-er-surface rounded-lg border border-er-border p-4">
-      <p className="text-sm font-semibold text-er-gold uppercase tracking-wide mb-3">
+    <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
+      <p className="text-sm font-er text-gold-grad uppercase tracking-wide mb-3">
         Settings
       </p>
       <div className="flex items-center justify-between">
@@ -242,13 +258,13 @@ function SettingsBox() {
         <div className="flex gap-1">
           <button
             onClick={() => setTheme('dark')}
-            className={`px-2 py-1 rounded text-xs ${theme === 'dark' ? 'bg-er-gold text-black font-semibold' : 'bg-er-bg border border-er-border text-gray-400'}`}
+            className={`px-2 py-1 rounded text-xs transition-er ${theme === 'dark' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}
           >
             🌙 Dark
           </button>
           <button
             onClick={() => setTheme('light')}
-            className={`px-2 py-1 rounded text-xs ${theme === 'light' ? 'bg-er-gold text-black font-semibold' : 'bg-er-bg border border-er-border text-gray-400'}`}
+            className={`px-2 py-1 rounded text-xs transition-er ${theme === 'light' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}
           >
             ☀ Light
           </button>
@@ -260,14 +276,14 @@ function SettingsBox() {
 
 // ── About box + updater controls ──────────────────────────────────────────────
 
-// Detect if running in Electron (preload.cjs exposes window.erApp)
 const isElectron = typeof window !== 'undefined' && (window as any).erApp;
 
 function AboutBox() {
-  const [version, setVersion] = useState('1.0.2');
+  const [version, setVersion] = useState('1.0.3');
   const [patch, setPatch] = useState('1.14');
   const [checking, setChecking] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
 
   useEffect(() => {
     if (isElectron) {
@@ -289,10 +305,13 @@ function AboutBox() {
         setUpdateMsg(`⚠ ${result.reason || 'Check failed'}`);
       } else if (result.downloaded) {
         setUpdateMsg(`✓ v${result.updateVersion} downloaded — it will install when you close the app.`);
+        setUpdateAvailable(true);
       } else if (result.updateAvailable) {
         setUpdateMsg(`v${result.updateVersion} is available — downloading in background...`);
+        setUpdateAvailable(true);
       } else {
         setUpdateMsg(`✓ You're up to date (v${result.currentVersion})`);
+        setUpdateAvailable(false);
       }
     } catch (e: any) {
       setUpdateMsg(`⚠ ${e.message || 'Check failed'}`);
@@ -302,8 +321,8 @@ function AboutBox() {
   };
 
   return (
-    <div className="bg-er-surface rounded-lg border border-er-border p-4 text-xs text-gray-400">
-      <p className="font-semibold text-gray-300 mb-1">About</p>
+    <div className="bg-er-surface rounded-lg border border-er-border p-4 text-xs text-gray-400 card-glow">
+      <p className="font-er text-gold-grad mb-2 text-sm">About</p>
       <p>
         Damage formulas derived from regulation.bin params.
         Values match community-tested results from the Elden Ring
@@ -317,9 +336,11 @@ function AboutBox() {
           <button
             onClick={handleCheckUpdate}
             disabled={checking}
-            className="text-xs px-2 py-1 rounded bg-er-gold/10 border border-er-gold/30 text-er-gold hover:bg-er-gold/20 transition-colors disabled:opacity-50"
+            className={`text-xs px-2 py-1 rounded border border-er-gold/30 text-er-gold transition-er disabled:opacity-50 ${
+              updateAvailable ? 'animate-pulse-gold bg-er-gold/20' : 'bg-er-gold/10 hover:bg-er-gold/20'
+            }`}
           >
-            {checking ? '⟳ Checking...' : '⟳ Check for Updates'}
+            {checking ? '⟳ Checking...' : updateAvailable ? '✦ Update ready — click to install' : '⟳ Check for Updates'}
           </button>
         )}
         <button
@@ -327,13 +348,13 @@ function AboutBox() {
             if (isElectron) (window as any).erApp.openRepo();
             else window.open('https://github.com/Impossiblefella/elden-ring-aow-calculator', '_blank');
           }}
-          className="text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-colors"
+          className="text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er"
         >
           🐙 GitHub
         </button>
       </div>
       {updateMsg && (
-        <p className="mt-2 text-xs text-gray-400">{updateMsg}</p>
+        <p className="mt-2 text-xs text-gray-400 animate-fade-in">{updateMsg}</p>
       )}
     </div>
   );
@@ -349,6 +370,28 @@ const BUFF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'physick', label: 'Physick' },
 ];
 
+// Buff effect descriptions for tooltips
+const BUFF_TIPS: Record<string, string> = {
+  'golden-vow': '+15% all damage (60s)',
+  'standard-buff': '+15% all damage via commander-horn',
+  'rallying-standard': '+15% all damage + defense',
+  'old-lords-talisman': 'Extends buff duration +30%',
+  'fire-grant-me-strength': '+35% Fire, +20% Physical (30s)',
+  'flame-grant-me-strength': '+35% Fire, +20% Physical (30s)',
+  'golden-braid': '+15% all damage',
+  'ritual-shield-talisman': '+10% negation when full HP',
+  'fire-grease': '+60 Flat Fire damage',
+  'magic-grease': '+60 Flat Magic damage',
+  'lightning-grease': '+60 Flat Lightning damage',
+  'holy-grease': '+60 Flat Holy damage',
+  'poison-grease': '+60 Flat Poison buildup',
+  'blood-grease': '+60 Flat Bleed buildup',
+};
+
+function getBuffTip(id: string): string {
+  return BUFF_TIPS[id] ?? '';
+}
+
 function BuffSelector() {
   const { buffIds, toggleBuff } = useBuild();
   const [buffs, setBuffs] = useState<BuffInfo[]>([]);
@@ -361,24 +404,26 @@ function BuffSelector() {
   const activeCount = buffIds.length;
 
   return (
-    <div className="bg-er-surface rounded-lg border border-er-border p-4">
+    <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between text-sm font-semibold text-er-gold uppercase tracking-wide mb-2"
+        className="w-full flex items-center justify-between text-sm font-er text-gold-grad uppercase tracking-wide mb-2"
       >
         <span>Buffs</span>
         <span className="flex items-center gap-2">
           {activeCount > 0 && (
-            <span className="text-xs bg-er-gold/20 text-er-gold px-2 py-0.5 rounded-full">
+            <span className="text-xs bg-er-gold/20 text-er-gold px-2 py-0.5 rounded-full animate-fade-in">
               {activeCount} active
             </span>
           )}
-          <span className="text-gray-400">{expanded ? '▼' : '▶'}</span>
+          <span className="text-gray-400 transition-transform duration-200" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0)' }}>
+            ▶
+          </span>
         </span>
       </button>
 
       {expanded && (
-        <div className="space-y-3">
+        <div className="space-y-3 animate-fade-in">
           {BUFF_CATEGORIES.map((cat) => {
             const catBuffs = buffs.filter((b) => b.category === cat.key);
             if (catBuffs.length === 0) return null;
@@ -386,22 +431,27 @@ function BuffSelector() {
               <div key={cat.key}>
                 <p className="text-xs text-gray-500 uppercase mb-1">{cat.label}</p>
                 <div className="space-y-1">
-                  {catBuffs.map((b) => (
-                    <label
-                      key={b.id}
-                      className="flex items-center gap-2 cursor-pointer text-xs hover:bg-er-border/20 rounded px-2 py-1"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={buffIds.includes(b.id)}
-                        onChange={() => toggleBuff(b.id)}
-                        className="accent-er-gold"
-                      />
-                      <span className={buffIds.includes(b.id) ? 'text-er-gold' : 'text-gray-400'}>
-                        {b.name}
-                      </span>
-                    </label>
-                  ))}
+                  {catBuffs.map((b) => {
+                    const isActive = buffIds.includes(b.id);
+                    const tip = getBuffTip(b.id);
+                    return (
+                      <label
+                        key={b.id}
+                        className={`flex items-center gap-2 cursor-pointer text-xs rounded px-2 py-1 transition-er hover:bg-er-border/20 er-tooltip ${isActive ? 'animate-slide-in-left' : ''}`}
+                        data-tip={tip || undefined}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isActive}
+                          onChange={() => toggleBuff(b.id)}
+                          className="er-checkbox"
+                        />
+                        <span className={isActive ? 'text-er-gold' : 'text-gray-400'}>
+                          {b.name}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -418,17 +468,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <BuildProvider>
-        <div className="min-h-screen bg-er-bg text-gray-200">
+        <div className="min-h-screen bg-er-bg text-gray-200 relative z-10">
           <NavBar />
           <main className="max-w-7xl mx-auto px-4 py-6">
             <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
               <Sidebar />
               <div className="space-y-4">
-                <Routes>
-                  <Route path="/" element={<ARPage />} />
-                  <Route path="/ar" element={<ARPage />} />
-                  <Route path="/aow" element={<AoWPage />} />
-                </Routes>
+                <AnimatedRoutes />
               </div>
             </div>
           </main>

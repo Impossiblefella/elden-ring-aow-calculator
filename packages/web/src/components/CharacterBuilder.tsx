@@ -43,8 +43,6 @@ export const defaultStats: CharStats = {
 };
 
 // ── Preset builds ────────────────────────────────────────────────────────────
-// Common PvP/PvE builds at popular RL brackets. Stats exclude the starting
-// class base (10s) — these are the allocated levels the user sees in-game.
 interface PresetBuild {
   name: string;
   stats: CharStats;
@@ -82,14 +80,14 @@ export function CharacterBuilder() {
   const [showPresets, setShowPresets] = useState(false);
 
   return (
-    <div className="bg-er-surface rounded-lg border border-er-border p-4">
+    <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-er-gold uppercase tracking-wide">
+        <h3 className="text-sm font-er text-gold-grad uppercase tracking-wide">
           Character Stats
         </h3>
         <button
           onClick={() => setShowPresets(!showPresets)}
-          className="text-xs text-gray-400 hover:text-er-gold transition-colors"
+          className="text-xs text-gray-400 hover:text-er-gold transition-er"
         >
           {showPresets ? '▶ Hide Presets' : '▶ Presets'}
         </button>
@@ -97,12 +95,13 @@ export function CharacterBuilder() {
 
       {/* Preset build buttons */}
       {showPresets && (
-        <div className="mb-3 grid grid-cols-1 gap-1">
-          {PRESETS.map((preset) => (
+        <div className="mb-3 grid grid-cols-1 gap-1 animate-fade-in">
+          {PRESETS.map((preset, i) => (
             <button
               key={preset.name}
               onClick={() => setStats(preset.stats)}
-              className="text-left text-xs px-2 py-1.5 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-colors text-gray-400"
+              className="row-stagger text-left text-xs px-2 py-1.5 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400"
+              style={{ animationDelay: `${i * 50}ms` }}
             >
               {preset.name}
               <span className="text-gray-600 ml-2">
@@ -127,7 +126,7 @@ export function CharacterBuilder() {
               onChange={(e) =>
                 setStats({ ...stats, [key]: Math.max(1, Math.min(99, parseInt(e.target.value) || 1)) })
               }
-              className="w-16 bg-er-bg border border-er-border rounded px-2 py-1 text-sm text-gray-200 focus:border-er-gold focus:outline-none transition-colors"
+              className="w-16 bg-er-bg border border-er-border rounded px-2 py-1 text-sm text-gray-200 focus:border-er-gold focus:outline-none transition-er"
             />
           </div>
         ))}
@@ -136,5 +135,4 @@ export function CharacterBuilder() {
   );
 }
 
-// Re-export CharStats for convenience (used by the pages)
 export type { CharStats as _CharStats };
