@@ -9,16 +9,39 @@
  * AUTO-UPDATE: Uses electron-updater to check GitHub Releases for new
  * versions. On update-available, downloads in background and installs
  * on quit. In dev mode, auto-update is skipped.
+ *
+ * UPDATER LOG: Writes to %APPDATA%/er-aow-calc/updater.log for debugging.
  */
-const { app, BrowserWindow, shell, dialog } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 const http = require("http");
+const fs = require("fs");
 
 const SERVER_PORT = 3456;
 let mainWindow = null;
 let serverProcess = null;
 let isQuitting = false;
+
+// ── UPDATER LOG ─────────────────────────────────────────────────────────────
+// Write updater events to a log file in the user's app data directory so
+// users diagnosing failed updates can share it.
+const logDir = app.getPath("userData");
+const logFile = path.join(logDir, "updater.log");
+
+function logUpdater(msg) {
+  const timestamp = new Date().toISOString();
+  const line = `[${timestamp}] ${msg}\n`;
+  console.log(`[updater] ${msg}`);
+  try {
+    fs.appendFileSync(logFile, line);
+  } catch (e) {
+    // Ignore log write errors.
+  }
+}
+
+// Reset log on startup.
+try { fs.writeFileSync(logFile, `=== Updater log started at ${new Date().toISOString()} ===\n`); } catch (e) {}
 
 // ── AUTO-UPDATER ──────────────────────────────────────────────────────────────
 // electron-updater checks the GitHub releases feed for a latest.yml file.
@@ -29,18 +52,22 @@ try {
     autoUpdater = require("electron-updater").autoUpdater;
   }
 } catch (e) {
-  console.log("[updater] electron-updater not available, skipping:", e.message);
+  logUpdater("electron-updater not available, skipping: " + e.message);
 }
+
+let updateInfo = null;
+let updateDownloaded = false;
 
 if (autoUpdater) {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnQuit = true;
 
   autoUpdater.on("checking-for-update", () => {
-    console.log("[updater] Checking for updates...");
+    logUpdater("Checking for updates...");
   });
   autoUpdater.on("update-available", (info) => {
-    console.log("[updater] Update available:", info.version);
+    logUpdater("Update available: " + info.version);
+    updateInfo = info;
     if (mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: "info",
@@ -52,24 +79,29 @@ if (autoUpdater) {
     }
   });
   autoUpdater.on("update-not-available", (info) => {
-    console.log("[updater] Up to date:", info.version);
+    logUpdater("Up to date: " + info.version);
+    updateInfo = null;
+    updateDownloaded = false;
   });
   autoUpdater.on("download-progress", (progress) => {
-    console.log(`[updater] Downloading: ${Math.round(progress.percent)}%`);
+    logUpdater(`Downloading: ${Math.round(progress.percent)}% (${Math.round(progress.transferred / 1024 / 1024)}MB / ${Math.round(progress.total / 1024 / 1024)}MB)`);
   });
   autoUpdater.on("update-downloaded", (info) => {
-    console.log("[updater] Update downloaded:", info.version);
+    logUpdater("Update downloaded: " + info.version);
+    updateInfo = info;
+    updateDownloaded = true;
     if (mainWindow) {
       dialog.showMessageBox(mainWindow, {
         type: "info",
         title: "Update Ready",
         message: `Version ${info.version} has been downloaded.`,
         detail: "The update will be installed when you close the app.",
-        buttons: ["OK"],
+        buttons: ["Install now", "Later"],
       }).then(({ response }) => {
-        // response 0 = "OK" — user acknowledged. Exit to install.
-        isQuitting = true;
-        autoUpdater.quitAndInstall();
+        if (response === 0) {
+          isQuitting = true;
+          autoUpdater.quitAndInstall();
+        }
       });
     } else {
       isQuitting = true;
@@ -77,9 +109,51 @@ if (autoUpdater) {
     }
   });
   autoUpdater.on("error", (err) => {
-    console.error("[updater] Error:", err.message);
+    logUpdater("Error: " + err.message);
   });
 }
+
+// ── IPC HANDLERS ────────────────────────────────────────────────────────────
+// Expose updater controls to the renderer (via preload.cjs) for the About box.
+ipcMain.handle("updater:check", async () => {
+  if (!autoUpdater) {
+    return { ok: false, reason: "Auto-updater not available (dev mode or missing module)." };
+  }
+  try {
+    logUpdater("Manual check requested by user.");
+    const result = await autoUpdater.checkForUpdates();
+    return {
+      ok: true,
+      currentVersion: app.getVersion(),
+      updateAvailable: updateInfo !== null,
+      updateVersion: updateInfo?.version ?? null,
+      downloaded: updateDownloaded,
+    };
+  } catch (err) {
+    logUpdater("Manual check error: " + err.message);
+    return { ok: false, reason: err.message };
+  }
+});
+
+ipcMain.handle("app:get-version", () => {
+  return app.getVersion();
+});
+
+ipcMain.handle("app:get-patch", () => {
+  // Read patch version from the data file alongside the server bundle.
+  try {
+    const dataPath = path.join(process.resourcesPath, "app.asar.unpacked", "data", "regulation-vanilla-v1.14.json");
+    if (fs.existsSync(dataPath)) {
+      const raw = JSON.parse(fs.readFileSync(dataPath, "utf-8"));
+      return raw.version || "1.14";
+    }
+  } catch (e) {}
+  return "1.14";
+});
+
+ipcMain.handle("app:open-repo", () => {
+  shell.openExternal("https://github.com/Impossiblefella/elden-ring-aow-calculator");
+});
 
 // ── SINGLE INSTANCE LOCK ─────────────────────────────────────────────────────
 // This is THE most important guard: prevents multiple instances from spawning.
@@ -161,12 +235,12 @@ function startServer() {
   serverProcess.on("exit", (code, signal) => {
     console.log(`Server process exited with code ${code} signal ${signal}`);
     serverProcess = null;
-    // If the server dies unexpectedly WHILE running, show an error dialog
+    // If the server dies unexpectedly WHILE running, show a styled error dialog
     // but don't try to restart it (avoids the infinite-loop bug).
     if (!isQuitting && mainWindow) {
       dialog.showErrorBox(
         "Server stopped",
-        "The embedded server stopped unexpectedly. The app will close."
+        "The embedded server stopped unexpectedly. The app will close.\n\nIf this keeps happening, please report it at:\nhttps://github.com/Impossiblefella/elden-ring-aow-calculator/issues"
       );
       app.quit();
     }
@@ -178,8 +252,20 @@ function startServer() {
   });
 }
 
+// ── Resolve app icon path ───────────────────────────────────────────────────
+function getIconPath() {
+  // In packaged app, icon is in resources/app.asar.unpacked/build/icon.ico
+  // In dev, it's at electron/build/icon.ico
+  const isDev = !app.isPackaged;
+  if (isDev) {
+    return path.join(__dirname, "build", "icon.ico");
+  }
+  return path.join(process.resourcesPath, "app.asar.unpacked", "build", "icon.ico");
+}
+
 // ── Create the main window ───────────────────────────────────────────────────
 function createWindow() {
+  const iconPath = getIconPath();
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -188,9 +274,11 @@ function createWindow() {
     title: "Elden Ring AoW Damage Calculator",
     backgroundColor: "#1a1a2e",
     autoHideMenuBar: true,
+    icon: iconPath,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, "preload.cjs"),
     },
   });
 
@@ -212,7 +300,7 @@ app.whenReady().then(async () => {
     // Server failed — show a clear error and QUIT. Do NOT retry. Do NOT spawn windows.
     dialog.showErrorBox(
       "Failed to start",
-      `The server could not start:\n\n${err.message}\n\nThe app will now close.`
+      `The server could not start:\n\n${err.message}\n\nThe app will now close.\n\nIf this keeps happening, report it at:\nhttps://github.com/Impossiblefella/elden-ring-aow-calculator/issues`
     );
     app.quit();
     return;
@@ -223,7 +311,7 @@ app.whenReady().then(async () => {
   // Check for updates after the window is up (only in packaged builds).
   if (autoUpdater) {
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error("[updater] Check failed:", err.message);
+      logUpdater("Auto check failed: " + err.message);
     });
   }
 

@@ -22,7 +22,7 @@
  *             × (1 + talismanMult) × (1 + physickMult)
  */
 
-import { AttackPowerType, allDamageTypes } from "../types";
+import { AttackPowerType, allDamageTypes, allStatusTypes } from "../types";
 import type { WeaponAttackResult } from "./ar";
 
 /** Buff category — controls stacking behaviour. */
@@ -168,6 +168,59 @@ export const BUFF_LIBRARY: Buff[] = [
     // Equip-load based — simplified to a fixed 10%
     allDamageMultiplier: 0.10,
   },
+  // ── Weapon Greases ──────────────────────────────────────────────────────
+  // Greases add flat AR in their element. They use the "weapon" category
+  // so they do NOT stack with each other (only the highest per-type flat
+  // applies). Values are +60 flat for elemental greases, +55 for status
+  // greases at default upgrade level.
+  {
+    id: "fire-grease",
+    name: "Fire Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.FIRE]: 60,
+    },
+  },
+  {
+    id: "magic-grease",
+    name: "Magic Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.MAGIC]: 60,
+    },
+  },
+  {
+    id: "lightning-grease",
+    name: "Lightning Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.LIGHTNING]: 60,
+    },
+  },
+  {
+    id: "holy-grease",
+    name: "Holy Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.HOLY]: 60,
+    },
+  },
+  {
+    id: "poison-grease",
+    name: "Poison Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.POISON]: 55,
+    },
+  },
+  {
+    id: "blood-grease",
+    name: "Blood Grease",
+    category: "weapon",
+    flatAdditions: {
+      [AttackPowerType.BLEED]: 55,
+    },
+  },
 ];
 
 export function getBuff(id: string): Buff | undefined {
@@ -214,8 +267,26 @@ export function applyBuffs(
 
   const result: Partial<Record<AttackPowerType, number>> = {};
 
-  for (const apt of allDamageTypes) {
+  // Process both scalar damage types and status types (for greases like
+  // Poison Grease / Blood Grease that add flat status buildup).
+  const allTypes = [...allDamageTypes, ...allStatusTypes] as readonly AttackPowerType[];
+
+  for (const apt of allTypes) {
     const baseAR = ar.attackPower[apt]?.total ?? 0;
+
+    // For status types, only flat weapon buffs apply (no multipliers).
+    const isStatus = (allStatusTypes as readonly AttackPowerType[]).includes(apt);
+    if (isStatus) {
+      let flatBuff = 0;
+      for (const wb of weaponBuffs) {
+        const flat = wb.flatAdditions?.[apt] ?? 0;
+        if (flat > flatBuff) flatBuff = flat;
+      }
+      if (baseAR === 0 && flatBuff === 0) continue;
+      result[apt] = baseAR + flatBuff;
+      continue;
+    }
+
     if (!baseAR) continue;
 
     // Aura: pick the highest all-damage or per-type multiplier.

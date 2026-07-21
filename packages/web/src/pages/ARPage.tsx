@@ -74,10 +74,9 @@ function scalingLetter(v: number): string {
 }
 
 export function ARPage() {
-  const { stats, upgradeLevel, twoHanding, buffIds } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId } = useBuild();
   const [mode, setMode] = useState<Mode>('table');
   const [enemies, setEnemies] = useState<EnemyInfo[]>([]);
-  const [enemyId, setEnemyId] = useState('malenia');
 
   // Table mode state
   const [compareRows, setCompareRows] = useState<CompareRow[]>([]);
@@ -128,14 +127,14 @@ export function ARPage() {
   // Calc single weapon damage
   useEffect(() => {
     if (mode === 'table' || !selectedWeapon) { setResultA(null); return; }
-    api.postDamage({ weaponId: selectedWeapon.id, attributes: stats, upgradeLevel, enemyId, twoHanding, buffIds })
+    api.postDamage({ weaponId: selectedWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds })
       .then(setResultA)
       .catch(e => setError(e instanceof Error ? e.message : 'Error'));
   }, [mode, selectedWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds]);
 
   useEffect(() => {
     if (mode !== 'compare' || !compareWeapon) { setResultB(null); return; }
-    api.postDamage({ weaponId: compareWeapon.id, attributes: stats, upgradeLevel, enemyId, twoHanding, buffIds })
+    api.postDamage({ weaponId: compareWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds })
       .then(setResultB)
       .catch(() => {});
   }, [mode, compareWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds]);

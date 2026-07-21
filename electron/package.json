@@ -1,6 +1,6 @@
 {
   "name": "elden-ring-aow-calculator",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Elden Ring Ashes of War Damage Calculator",
   "main": "src/main.cjs",
   "author": "ER Calc",
@@ -27,6 +27,7 @@
     },
     "files": [
       "src/**/*",
+      "build/**/*",
       "server-bundle.cjs",
       "web-dist/**/*",
       "data/regulation-vanilla-v1.14.json",
@@ -35,7 +36,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
@@ -48,7 +50,8 @@
       "server-bundle.cjs",
       "web-dist/**/*",
       "data/regulation-vanilla-v1.14.json",
-      "node_modules/electron-updater/**/*"
+      "node_modules/electron-updater/**/*",
+      "build/icon.ico"
     ],
     "publish": {
       "provider": "github",

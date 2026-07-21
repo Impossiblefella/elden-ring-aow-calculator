@@ -24,6 +24,7 @@ interface PersistedBuild {
   upgradeLevel: number;
   twoHanding: boolean;
   buffIds: string[];
+  enemyId: string;
 }
 
 function loadBuild(): Partial<PersistedBuild> {
@@ -55,6 +56,8 @@ interface BuildState {
   setTwoHanding: (b: boolean) => void;
   buffIds: string[];
   toggleBuff: (id: string) => void;
+  enemyId: string;
+  setEnemyId: (id: string) => void;
   weapons: WeaponListItem[];
   serverStatus: 'connecting' | 'online' | 'offline';
 }
@@ -73,13 +76,14 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
   const [upgradeLevel, setUpgradeLevel] = useState(saved.upgradeLevel ?? 25);
   const [twoHanding, setTwoHanding] = useState(saved.twoHanding ?? false);
   const [buffIds, setBuffIds] = useState<string[]>(saved.buffIds ?? []);
+  const [enemyId, setEnemyId] = useState<string>(saved.enemyId ?? 'malenia');
   const [weapons, setWeapons] = useState<WeaponListItem[]>([]);
   const [serverStatus, setServerStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
   // Persist build state to localStorage whenever it changes.
   useEffect(() => {
-    saveBuild({ stats, upgradeLevel, twoHanding, buffIds });
-  }, [stats, upgradeLevel, twoHanding, buffIds]);
+    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId });
+  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId]);
 
   useEffect(() => {
     api.getHealth()
@@ -104,6 +108,7 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
       upgradeLevel, setUpgradeLevel: handleUpgrade,
       twoHanding, setTwoHanding,
       buffIds, toggleBuff,
+      enemyId, setEnemyId,
       weapons, serverStatus,
     }}>
       {children}
@@ -190,22 +195,146 @@ function NavBar() {
 // ── Sidebar (shared character builder) ───────────────────────────────────────
 
 function Sidebar() {
-  const { serverStatus } = useBuild();
   return (
     <div className="space-y-4">
       <CharacterBuilder />
       <BuffSelector />
-      <div className="bg-er-surface rounded-lg border border-er-border p-4 text-xs text-gray-400">
-        <p className="font-semibold text-gray-300 mb-1">About</p>
-        <p>
-          Damage formulas derived from regulation.bin params.
-          Values match community-tested results from the Elden Ring
-          wiki and calculator projects.
-        </p>
-        <p className="mt-2 text-gray-500">
-          App v1.0.1 · Patch: {serverStatus === 'online' ? '1.14' : '—'}
-        </p>
+      <AboutBox />
+      <SettingsBox />
+    </div>
+  );
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+const THEME_KEY = 'er-aow-calc:theme';
+
+function getInitialTheme(): 'dark' | 'light' {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {}
+  return 'dark';
+}
+
+function applyTheme(theme: 'dark' | 'light') {
+  const root = document.documentElement;
+  if (theme === 'light') root.classList.add('theme-light');
+  else root.classList.remove('theme-light');
+}
+
+function SettingsBox() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
+
+  // Apply theme on mount and when it changes.
+  useEffect(() => {
+    applyTheme(theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+  }, [theme]);
+
+  return (
+    <div className="bg-er-surface rounded-lg border border-er-border p-4">
+      <p className="text-sm font-semibold text-er-gold uppercase tracking-wide mb-3">
+        Settings
+      </p>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">Theme</span>
+        <div className="flex gap-1">
+          <button
+            onClick={() => setTheme('dark')}
+            className={`px-2 py-1 rounded text-xs ${theme === 'dark' ? 'bg-er-gold text-black font-semibold' : 'bg-er-bg border border-er-border text-gray-400'}`}
+          >
+            🌙 Dark
+          </button>
+          <button
+            onClick={() => setTheme('light')}
+            className={`px-2 py-1 rounded text-xs ${theme === 'light' ? 'bg-er-gold text-black font-semibold' : 'bg-er-bg border border-er-border text-gray-400'}`}
+          >
+            ☀ Light
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ── About box + updater controls ──────────────────────────────────────────────
+
+// Detect if running in Electron (preload.cjs exposes window.erApp)
+const isElectron = typeof window !== 'undefined' && (window as any).erApp;
+
+function AboutBox() {
+  const [version, setVersion] = useState('1.0.2');
+  const [patch, setPatch] = useState('1.14');
+  const [checking, setChecking] = useState(false);
+  const [updateMsg, setUpdateMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isElectron) {
+      (window as any).erApp.getVersion().then((v: string) => setVersion(v));
+      (window as any).erApp.getPatch().then((p: string) => setPatch(p));
+    }
+  }, []);
+
+  const handleCheckUpdate = async () => {
+    if (!isElectron) {
+      setUpdateMsg('Updates are only available in the desktop app.');
+      return;
+    }
+    setChecking(true);
+    setUpdateMsg(null);
+    try {
+      const result = await (window as any).erApp.checkForUpdates();
+      if (!result.ok) {
+        setUpdateMsg(`⚠ ${result.reason || 'Check failed'}`);
+      } else if (result.downloaded) {
+        setUpdateMsg(`✓ v${result.updateVersion} downloaded — it will install when you close the app.`);
+      } else if (result.updateAvailable) {
+        setUpdateMsg(`v${result.updateVersion} is available — downloading in background...`);
+      } else {
+        setUpdateMsg(`✓ You're up to date (v${result.currentVersion})`);
+      }
+    } catch (e: any) {
+      setUpdateMsg(`⚠ ${e.message || 'Check failed'}`);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  return (
+    <div className="bg-er-surface rounded-lg border border-er-border p-4 text-xs text-gray-400">
+      <p className="font-semibold text-gray-300 mb-1">About</p>
+      <p>
+        Damage formulas derived from regulation.bin params.
+        Values match community-tested results from the Elden Ring
+        wiki and calculator projects.
+      </p>
+      <div className="mt-2 flex items-center gap-2 text-gray-500">
+        <span>App v{version} · Patch: {patch}</span>
+      </div>
+      <div className="mt-2 flex items-center gap-2">
+        {isElectron && (
+          <button
+            onClick={handleCheckUpdate}
+            disabled={checking}
+            className="text-xs px-2 py-1 rounded bg-er-gold/10 border border-er-gold/30 text-er-gold hover:bg-er-gold/20 transition-colors disabled:opacity-50"
+          >
+            {checking ? '⟳ Checking...' : '⟳ Check for Updates'}
+          </button>
+        )}
+        <button
+          onClick={() => {
+            if (isElectron) (window as any).erApp.openRepo();
+            else window.open('https://github.com/Impossiblefella/elden-ring-aow-calculator', '_blank');
+          }}
+          className="text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-colors"
+        >
+          🐙 GitHub
+        </button>
+      </div>
+      {updateMsg && (
+        <p className="mt-2 text-xs text-gray-400">{updateMsg}</p>
+      )}
     </div>
   );
 }
@@ -215,6 +344,7 @@ function Sidebar() {
 const BUFF_CATEGORIES: { key: string; label: string }[] = [
   { key: 'aura', label: 'Aura' },
   { key: 'body', label: 'Body' },
+  { key: 'weapon', label: 'Weapon Greases' },
   { key: 'talisman', label: 'Talisman' },
   { key: 'physick', label: 'Physick' },
 ];

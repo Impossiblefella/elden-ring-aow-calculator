@@ -54,11 +54,10 @@ function getValue(r: RankResult, key: SortKey): number | string {
 }
 
 export function AoWPage() {
-  const { stats, upgradeLevel, twoHanding, buffIds } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId } = useBuild();
   const [ashes, setAshes] = useState<AshOfWarInfo[]>([]);
   const [enemies, setEnemies] = useState<EnemyInfo[]>([]);
   const [selectedAsh, setSelectedAsh] = useState<number | null>(null);
-  const [selectedEnemy, setSelectedEnemy] = useState<string>('');
   const [metric, setMetric] = useState<Metric>('total');
   const [results, setResults] = useState<RankResult[]>([]);
   const [loading, setLoading] = useState(false);
@@ -85,7 +84,7 @@ export function AoWPage() {
         attributes: stats,
         upgradeLevel,
         metric,
-        enemyId: selectedEnemy || undefined,
+        enemyId: enemyId || undefined,
         twoHanding,
         buffIds,
       });
@@ -99,7 +98,7 @@ export function AoWPage() {
 
   useEffect(() => {
     if (selectedAsh !== null) runRank();
-  }, [selectedAsh, metric, selectedEnemy, stats, upgradeLevel, twoHanding, buffIds]);
+  }, [selectedAsh, metric, enemyId, stats, upgradeLevel, twoHanding, buffIds]);
 
   // Client-side filters: search + weapon type
   const filteredResults = useMemo(() => {
@@ -188,8 +187,8 @@ export function AoWPage() {
           <div>
             <label className="block text-xs text-gray-400 mb-1">Enemy</label>
             <select
-              value={selectedEnemy}
-              onChange={(e) => setSelectedEnemy(e.target.value)}
+              value={enemyId}
+              onChange={(e) => setEnemyId(e.target.value)}
               className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 focus:border-er-gold focus:outline-none min-w-[180px]"
             >
               <option value="">No enemy (raw damage)</option>
@@ -278,7 +277,7 @@ export function AoWPage() {
             <span className="text-er-gold font-semibold">
               {METRICS.find(m => m.value === metric)?.label}
             </span>
-            {selectedEnemy && <span className="ml-2">vs <span className="text-er-gold">{enemies.find(e => e.id === selectedEnemy)?.name}</span></span>}
+            {enemyId && <span className="ml-2">vs <span className="text-er-gold">{enemies.find(e => e.id === enemyId)?.name}</span></span>}
             {buffIds.length > 0 && <span className="ml-2 text-yellow-400">★ {buffIds.length} buff(s)</span>}
           </div>
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">

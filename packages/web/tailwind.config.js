@@ -1,14 +1,17 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
         er: {
-          bg: '#0a0a0a',
-          surface: '#161616',
-          border: '#2a2a2a',
-          gold: '#d4af37',
-          accent: '#8b7355',
+          bg: 'var(--er-bg)',
+          surface: 'var(--er-surface)',
+          border: 'var(--er-border)',
+          gold: 'var(--er-gold)',
+          accent: 'var(--er-accent)',
+          fg: 'var(--er-fg)',
+          muted: 'var(--er-muted)',
         },
       },
       fontFamily: {
