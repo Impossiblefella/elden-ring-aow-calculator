@@ -19,14 +19,14 @@ export interface CharStats {
 }
 
 const STAT_LABELS: Record<keyof CharStats, string> = {
-  vigor: 'Vigor',
-  mind: 'Mind',
-  endurance: 'Endurance',
-  str: 'Strength',
-  dex: 'Dexterity',
-  int: 'Intelligence',
-  fai: 'Faith',
-  arc: 'Arcane',
+  vigor: 'VIG',
+  mind: 'MND',
+  endurance: 'END',
+  str: 'STR',
+  dex: 'DEX',
+  int: 'INT',
+  fai: 'FAI',
+  arc: 'ARC',
 };
 
 const STAT_KEYS = Object.keys(STAT_LABELS) as (keyof CharStats)[];
@@ -114,8 +114,8 @@ export function CharacterBuilder() {
 
       <div className="grid grid-cols-2 gap-3">
         {STAT_KEYS.map((key) => (
-          <div key={key} className="flex items-center justify-end gap-2">
-            <label className="text-xs text-gray-400 whitespace-nowrap">
+          <div key={key} className="flex items-center gap-2">
+            <label className="text-xs text-gray-400 w-8 text-right font-medium">
               {STAT_LABELS[key]}
             </label>
             <input
