@@ -63,7 +63,7 @@ function GoldSpinner({ size = 24 }: { size?: number }) {
 }
 
 export function AoWPage() {
-  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId, charged } = useBuild();
   const [ashes, setAshes] = useState<AshOfWarInfo[]>([]);
   const [enemies, setEnemies] = useState<EnemyInfo[]>([]);
   const [selectedAsh, setSelectedAsh] = useState<number | null>(null);
@@ -77,6 +77,7 @@ export function AoWPage() {
   const [sortKey, setSortKey] = useState<SortKey>('rank');
   const [sortAsc, setSortAsc] = useState(true);
   const [limit, setLimit] = useState(50);
+  const [compact, setCompact] = useState(false);
 
   useEffect(() => {
     api.getAshes().then(setAshes).catch(() => {});
@@ -96,6 +97,7 @@ export function AoWPage() {
         enemyId: enemyId || undefined,
         twoHanding,
         buffIds,
+        charged,
       });
       setResults(res.results);
     } catch (e) {
@@ -107,7 +109,7 @@ export function AoWPage() {
 
   useEffect(() => {
     if (selectedAsh !== null) runRank();
-  }, [selectedAsh, metric, enemyId, stats, upgradeLevel, twoHanding, buffIds]);
+  }, [selectedAsh, metric, enemyId, stats, upgradeLevel, twoHanding, buffIds, charged]);
 
   // Client-side filters
   const filteredResults = useMemo(() => {

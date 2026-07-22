@@ -10,7 +10,7 @@
  * and app restarts.
  */
 import { useEffect, useState, useCallback, createContext, useContext } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { api, type WeaponListItem, type BuffInfo } from './api';
 import { CharacterBuilder, defaultStats, type CharStats } from './components/CharacterBuilder';
 import { ARPage } from './pages/ARPage';
@@ -25,6 +25,10 @@ interface PersistedBuild {
   twoHanding: boolean;
   buffIds: string[];
   enemyId: string;
+  ngCycle: number;
+  powerStance: boolean;
+  critModifier: number;
+  charged: boolean;
 }
 
 function loadBuild(): Partial<PersistedBuild> {
@@ -60,6 +64,14 @@ interface BuildState {
   setEnemyId: (id: string) => void;
   weapons: WeaponListItem[];
   serverStatus: 'connecting' | 'online' | 'offline';
+  ngCycle: number;
+  setNgCycle: (n: number) => void;
+  powerStance: boolean;
+  setPowerStance: (b: boolean) => void;
+  critModifier: number;
+  setCritModifier: (n: number) => void;
+  charged: boolean;
+  setCharged: (b: boolean) => void;
 }
 
 const BuildContext = createContext<BuildState | null>(null);
@@ -77,13 +89,17 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
   const [twoHanding, setTwoHanding] = useState(saved.twoHanding ?? false);
   const [buffIds, setBuffIds] = useState<string[]>(saved.buffIds ?? []);
   const [enemyId, setEnemyId] = useState<string>(saved.enemyId ?? 'malenia');
+  const [ngCycle, setNgCycle] = useState<number>(saved.ngCycle ?? 0);
+  const [powerStance, setPowerStance] = useState<boolean>(saved.powerStance ?? false);
+  const [critModifier, setCritModifier] = useState<number>(saved.critModifier ?? 1.0);
+  const [charged, setCharged] = useState<boolean>(saved.charged ?? false);
   const [weapons, setWeapons] = useState<WeaponListItem[]>([]);
   const [serverStatus, setServerStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
   // Persist build state to localStorage whenever it changes.
   useEffect(() => {
-    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId });
-  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId]);
+    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged });
+  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged]);
 
   useEffect(() => {
     api.getHealth()
@@ -110,6 +126,10 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
       buffIds, toggleBuff,
       enemyId, setEnemyId,
       weapons, serverStatus,
+      ngCycle, setNgCycle,
+      powerStance, setPowerStance,
+      critModifier, setCritModifier,
+      charged, setCharged,
     }}>
       {children}
     </BuildContext.Provider>
@@ -134,7 +154,7 @@ function AnimatedRoutes() {
 // ── Nav bar ──────────────────────────────────────────────────────────────────
 
 function NavBar() {
-  const { serverStatus, upgradeLevel, setUpgradeLevel, twoHanding, setTwoHanding } = useBuild();
+  const { serverStatus, upgradeLevel, setUpgradeLevel, twoHanding, setTwoHanding, powerStance, setPowerStance, critModifier, setCritModifier, charged, setCharged, ngCycle, setNgCycle } = useBuild();
 
   return (
     <header className="glass border-b border-er-border sticky top-0 z-20">
@@ -179,7 +199,7 @@ function NavBar() {
           </nav>
         </div>
         {/* Global controls */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 flex-wrap">
           <label className="flex items-center gap-2 text-sm">
             <span className="text-gray-400">Upgrade</span>
             <input
@@ -194,14 +214,39 @@ function NavBar() {
             />
             <span className="text-er-gold font-semibold w-8">+{upgradeLevel}</span>
           </label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={twoHanding}
-              onChange={(e) => setTwoHanding(e.target.checked)}
-              className="er-checkbox"
-            />
+          {/* NG+ cycle selector */}
+          <select
+            value={ngCycle}
+            onChange={(e) => setNgCycle(parseInt(e.target.value))}
+            className="bg-er-bg border border-er-border rounded px-2 py-1 text-xs text-gray-300 transition-er focus:border-er-gold focus:outline-none"
+            title="NG+ cycle"
+          >
+            <option value={0}>NG</option>
+            {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>NG+{n}</option>)}
+          </select>
+          {/* Crit modifier */}
+          <select
+            value={critModifier}
+            onChange={(e) => setCritModifier(parseFloat(e.target.value))}
+            className="bg-er-bg border border-er-border rounded px-2 py-1 text-xs text-gray-300 transition-er focus:border-er-gold focus:outline-none"
+            title="Critical hit modifier"
+          >
+            <option value={1.0}>Crit: Normal</option>
+            <option value={1.6}>Crit: Backstab</option>
+            <option value={4.0}>Crit: Riposte</option>
+          </select>
+          {/* Toggles */}
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <input type="checkbox" checked={twoHanding} onChange={(e) => setTwoHanding(e.target.checked)} className="er-checkbox" />
             <span className="text-gray-400">2H</span>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <input type="checkbox" checked={powerStance} onChange={(e) => setPowerStance(e.target.checked)} className="er-checkbox" />
+            <span className="text-gray-400">⚡ Stance</span>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <input type="checkbox" checked={charged} onChange={(e) => setCharged(e.target.checked)} className="er-checkbox" />
+            <span className="text-gray-400">🔥 Charged</span>
           </label>
         </div>
       </div>
@@ -241,34 +286,98 @@ function applyTheme(theme: 'dark' | 'light') {
 }
 
 function SettingsBox() {
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, setStats, setUpgradeLevel, setTwoHanding, setBuffIds, setEnemyId, setNgCycle, setPowerStance, setCritModifier, setCharged } = useBuild();
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
+  const [buildName, setBuildName] = useState('');
+  const [savedBuilds, setSavedBuilds] = useState<{name: string; data: PersistedBuild}[]>([]);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     applyTheme(theme);
     try { localStorage.setItem(THEME_KEY, theme); } catch {}
   }, [theme]);
 
+  // Load saved builds from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('er-aow-calc:saved-builds');
+      if (raw) setSavedBuilds(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  const saveCurrentBuild = () => {
+    if (!buildName.trim()) return;
+    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged };
+    const newBuilds = [...savedBuilds.filter(b => b.name !== buildName), { name: buildName, data }];
+    setSavedBuilds(newBuilds);
+    try { localStorage.setItem('er-aow-calc:saved-builds', JSON.stringify(newBuilds)); } catch {}
+    setBuildName('');
+  };
+
+  const loadBuild = (name: string) => {
+    const build = savedBuilds.find(b => b.name === name);
+    if (!build) return;
+    const d = build.data;
+    setStats(d.stats); setUpgradeLevel(d.upgradeLevel); setTwoHanding(d.twoHanding);
+    setBuffIds(d.buffIds); setEnemyId(d.enemyId); setNgCycle(d.ngCycle ?? 0);
+    setPowerStance(d.powerStance ?? false); setCritModifier(d.critModifier ?? 1.0); setCharged(d.charged ?? false);
+  };
+
+  const deleteBuild = (name: string) => {
+    const newBuilds = savedBuilds.filter(b => b.name !== name);
+    setSavedBuilds(newBuilds);
+    try { localStorage.setItem('er-aow-calc:saved-builds', JSON.stringify(newBuilds)); } catch {}
+  };
+
+  const copyBuild = () => {
+    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged };
+    try {
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
   return (
     <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
       <p className="text-sm font-er text-gold-grad uppercase tracking-wide mb-3">
         Settings
       </p>
-      <div className="flex items-center justify-between">
+      {/* Theme */}
+      <div className="flex items-center justify-between mb-3">
         <span className="text-xs text-gray-400">Theme</span>
         <div className="flex gap-1">
-          <button
-            onClick={() => setTheme('dark')}
-            className={`px-2 py-1 rounded text-xs transition-er ${theme === 'dark' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}
-          >
-            🌙 Dark
-          </button>
-          <button
-            onClick={() => setTheme('light')}
-            className={`px-2 py-1 rounded text-xs transition-er ${theme === 'light' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}
-          >
-            ☀ Light
-          </button>
+          <button onClick={() => setTheme('dark')} className={`px-2 py-1 rounded text-xs transition-er ${theme === 'dark' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}>🌙 Dark</button>
+          <button onClick={() => setTheme('light')} className={`px-2 py-1 rounded text-xs transition-er ${theme === 'light' ? 'btn-gold' : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold'}`}>☀ Light</button>
         </div>
+      </div>
+      {/* Save/Load builds */}
+      <div className="border-t border-er-border pt-2 mt-2 space-y-2">
+        <p className="text-xs text-gray-500 uppercase">Builds</p>
+        <div className="flex gap-1">
+          <input
+            type="text"
+            value={buildName}
+            onChange={e => setBuildName(e.target.value)}
+            placeholder="Build name..."
+            className="flex-1 px-2 py-1 bg-er-bg border border-er-border rounded text-xs transition-er focus:border-er-gold focus:outline-none"
+            onKeyDown={e => { if (e.key === 'Enter') saveCurrentBuild(); }}
+          />
+          <button onClick={saveCurrentBuild} className="text-xs px-2 py-1 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold hover:bg-er-gold/30 transition-er">💾 Save</button>
+          <button onClick={copyBuild} className="text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er">{copied ? '✓ Copied!' : '📋 Copy'}</button>
+        </div>
+        {savedBuilds.length > 0 && (
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {savedBuilds.map(b => (
+              <div key={b.name} className="flex items-center gap-1 animate-fade-in">
+                <button onClick={() => loadBuild(b.name)} className="flex-1 text-left text-xs px-2 py-1 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400">
+                  {b.name}
+                </button>
+                <button onClick={() => deleteBuild(b.name)} className="text-xs px-1.5 py-1 rounded text-red-400 hover:bg-red-900/20 transition-er">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -279,7 +388,7 @@ function SettingsBox() {
 const isElectron = typeof window !== 'undefined' && (window as any).erApp;
 
 function AboutBox() {
-  const [version, setVersion] = useState('1.0.3');
+  const [version, setVersion] = useState('1.0.4');
   const [patch, setPatch] = useState('1.14');
   const [checking, setChecking] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
@@ -468,21 +577,55 @@ export default function App() {
   return (
     <BrowserRouter>
       <BuildProvider>
-        <div className="min-h-screen bg-er-bg text-gray-200 relative z-10">
-          <NavBar />
-          <main className="max-w-7xl mx-auto px-4 py-6">
-            <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
-              <Sidebar />
-              <div className="space-y-4">
-                <AnimatedRoutes />
-              </div>
-            </div>
-          </main>
-          <footer className="border-t border-er-border py-4 text-center text-xs text-gray-500">
-            Built with data parsed from regulation.bin · Formulas verified against community resources
-          </footer>
-        </div>
+        <AppInner />
       </BuildProvider>
     </BrowserRouter>
+  );
+}
+
+function AppInner() {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Ignore if typing in an input/textarea/select
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+        if (e.key === 'Escape') (e.target as HTMLElement).blur();
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        navigate(location.pathname === '/aow' ? '/ar' : '/aow');
+      } else if (e.key === '/') {
+        e.preventDefault();
+        const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
+        if (searchInput) searchInput.focus();
+      } else if (e.key === 'Escape') {
+        // Close any open modal (dispatch a custom event)
+        window.dispatchEvent(new CustomEvent('er-close-modal'));
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [navigate, location.pathname]);
+
+  return (
+    <div className="min-h-screen bg-er-bg text-gray-200 relative z-10">
+      <NavBar />
+      <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
+          <Sidebar />
+          <div className="space-y-4">
+            <AnimatedRoutes />
+          </div>
+        </div>
+      </main>
+      <footer className="border-t border-er-border py-4 text-center text-xs text-gray-500">
+        Built with data parsed from regulation.bin · Formulas verified against community resources
+      </footer>
+    </div>
   );
 }

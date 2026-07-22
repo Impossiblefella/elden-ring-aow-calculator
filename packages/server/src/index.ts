@@ -288,6 +288,10 @@ app.post("/api/compare", (req, res) => {
 interface DamageRequestBody extends AttackRatingRequestBody {
   enemyId?: string;
   buffIds?: string[];
+  ngCycle?: number;      // 0=NG, 1=NG+1, ..., 7=NG+7
+  powerStance?: boolean;  // dual-wield: doubles AR for paired weapons
+  critModifier?: number;  // 1.0 (normal), 1.6 (backstab), 4.0 (riposte)
+  charged?: boolean;      // charged AoW motion values
 }
 
 app.post("/api/damage", (req, res) => {
@@ -297,6 +301,10 @@ app.post("/api/damage", (req, res) => {
   const twoHanding = Boolean(loadBody(req.body, "twoHanding", false));
   const enemyId = String(loadBody(req.body, "enemyId", false) ?? "malenia");
   const buffIds = (loadBody(req.body, "buffIds", false) as string[]) ?? [];
+  const ngCycle = Number(loadBody(req.body, "ngCycle", false) ?? 0);
+  const powerStance = Boolean(loadBody(req.body, "powerStance", false) ?? false);
+  const critModifier = Number(loadBody(req.body, "critModifier", false) ?? 1.0);
+  const charged = Boolean(loadBody(req.body, "charged", false) ?? false);
   const enemy = enemyDatabase.find((e) => e.id === enemyId);
   if (!enemy) throw new ApiError(404, `Unknown enemy '${enemyId}'`);
 
@@ -308,14 +316,27 @@ app.post("/api/damage", (req, res) => {
     twoHanding,
   });
 
-  // Apply buffs if any were selected — create a new attackPower map to avoid
-  // mutating the original result in-place (which would leave scaled/weapon
-  // fields inconsistent with the buffed total).
+  // Power stance: double the AR for paired weapons (same weapon type in both hands)
+  if (powerStance) {
+    const newAttackPower = { ...result.attackPower };
+    for (const apt of allDamageTypes) {
+      if (result.attackPower[apt]) {
+        newAttackPower[apt] = {
+          ...result.attackPower[apt]!,
+          total: result.attackPower[apt]!.total * 2,
+          weapon: result.attackPower[apt]!.weapon * 2,
+          scaled: result.attackPower[apt]!.scaled * 2,
+        };
+      }
+    }
+    result = { ...result, attackPower: newAttackPower };
+  }
+
+  // Apply buffs
   let activeBuffs: Buff[] = [];
   if (buffIds.length > 0) {
     const buffed = applyBuffs(result, buffIds);
     activeBuffs = buffed.activeBuffs;
-    // Build a new attackPower with buffed totals while preserving other fields.
     const newAttackPower = { ...result.attackPower };
     for (const apt of allDamageTypes) {
       const buffedVal = buffed.attackPower[apt];
@@ -330,11 +351,18 @@ app.post("/api/damage", (req, res) => {
     result = { ...result, attackPower: newAttackPower };
   }
 
-  // Apply enemy defence + absorption per damage type using the shared engine.
+  // NG+ HP multiplier — scales enemy HP (display only, doesn't affect damage calc)
+  // NG+ multipliers from game data: NG=1.0, NG+1=1.1, NG+2=1.2, ..., NG+7=1.9
+  const ngHpMult = 1 + ngCycle * 0.1;
+  const enemyHp = enemy.hp ? Math.round(enemy.hp * ngHpMult) : undefined;
+
+  // Apply enemy defence + absorption per damage type
   const enemyDamages: Record<AttackPowerType, number> = {} as Record<AttackPowerType, number>;
   for (const apt of allDamageTypes) {
-    const ar = result.attackPower[apt]?.total ?? 0;
+    let ar = result.attackPower[apt]?.total ?? 0;
     if (!ar) continue;
+    // Apply crit modifier to damage
+    ar = ar * critModifier;
     const def = enemy.defence[apt] ?? 0;
     const abs = enemy.absorption[apt] ?? 0;
     enemyDamages[apt] = round(
@@ -343,17 +371,37 @@ app.post("/api/damage", (req, res) => {
         damageType: apt,
         enemyDefense: def,
         absorptionPercent: abs,
-        motion: 100,
+        motion: charged ? 120 : 100, // charged attacks have higher motion value
       }),
     );
   }
 
+  // Status proc calculation — how many hits to proc each status
+  const statusProcs: { type: number; name: string; perHit: number; threshold: number; hitsToProc: number }[] = [];
+  for (const apt of allStatusTypes) {
+    const statusAR = result.attackPower[apt]?.total ?? 0;
+    if (statusAR <= 0) continue;
+    const resistance = enemy.statusResistances?.[apt] ?? 1000;
+    const hitsToProc = Math.ceil((resistance * 1.1) / statusAR); // buildup decreases per hit
+    statusProcs.push({
+      type: apt,
+      name: attackPowerTypeName[apt],
+      perHit: Math.round(statusAR),
+      threshold: resistance,
+      hitsToProc: hitsToProc > 0 ? hitsToProc : Infinity,
+    });
+  }
+
   res.json({
     ...serializeAttackRatingResult(result),
-    enemy: { id: enemy.id, name: enemy.name, hp: enemy.hp, statusResistances: enemy.statusResistances },
+    enemy: { id: enemy.id, name: enemy.name, hp: enemyHp, baseHp: enemy.hp, statusResistances: enemy.statusResistances, ngCycle },
     enemyDamages,
     enemyDamageTotal: round(Object.values(enemyDamages).reduce((a, b) => a + (b ?? 0), 0)),
     activeBuffs: activeBuffs.map((b) => ({ id: b.id, name: b.name, category: b.category })),
+    statusProcs,
+    powerStance,
+    critModifier,
+    charged,
   });
 });
 
@@ -1079,6 +1127,8 @@ app.post("/api/rank", (req, res) => {
   const metric = String(loadBody(req.body, "metric", false) ?? "total") as RankingMetric;
   const enemyId = String(loadBody(req.body, "enemyId", false) ?? "");
   const twoHanding = Boolean(loadBody(req.body, "twoHanding", false));
+  const buffIds = (loadBody(req.body, "buffIds", false) as string[]) ?? [];
+  const charged = Boolean(loadBody(req.body, "charged", false) ?? false);
 
   const ash = ashOfWarCatalog.find((a) => a.id === ashOfWarId);
   if (!ash) throw new ApiError(404, `Unknown ashId=${ashOfWarId}`);

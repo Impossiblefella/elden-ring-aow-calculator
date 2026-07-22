@@ -122,9 +122,11 @@ function GoldSpinner({ size = 24 }: { size?: number }) {
 }
 
 export function ARPage() {
-  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId, ngCycle, powerStance, critModifier, charged } = useBuild();
   const [mode, setMode] = useState<Mode>('table');
   const [enemies, setEnemies] = useState<EnemyInfo[]>([]);
+  const [compact, setCompact] = useState(false);
+  const [modalWeapon, setModalWeapon] = useState<CompareRow | null>(null);
 
   // Table mode state
   const [compareRows, setCompareRows] = useState<CompareRow[]>([]);
@@ -175,17 +177,17 @@ export function ARPage() {
   // Calc single weapon damage
   useEffect(() => {
     if (mode === 'table' || !selectedWeapon) { setResultA(null); return; }
-    api.postDamage({ weaponId: selectedWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds })
+    api.postDamage({ weaponId: selectedWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds, ngCycle, powerStance, critModifier, charged })
       .then(setResultA)
       .catch(e => setError(e instanceof Error ? e.message : 'Error'));
-  }, [mode, selectedWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds]);
+  }, [mode, selectedWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds, ngCycle, powerStance, critModifier, charged]);
 
   useEffect(() => {
     if (mode !== 'compare' || !compareWeapon) { setResultB(null); return; }
-    api.postDamage({ weaponId: compareWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds })
+    api.postDamage({ weaponId: compareWeapon.id, attributes: stats, upgradeLevel, enemyId: enemyId || 'malenia', twoHanding, buffIds, ngCycle, powerStance, critModifier, charged })
       .then(setResultB)
       .catch(() => {});
-  }, [mode, compareWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds]);
+  }, [mode, compareWeapon, stats, upgradeLevel, enemyId, twoHanding, buffIds, ngCycle, powerStance, critModifier, charged]);
 
   // Client-side filtering
   const filteredRows = useMemo(() => {
@@ -327,6 +329,12 @@ export function ARPage() {
             >
               ⬇ Export CSV
             </button>
+            <button
+              onClick={() => setCompact(!compact)}
+              className={`px-3 py-1 rounded text-sm transition-er ${compact ? 'btn-gold' : 'bg-er-surface border border-er-border text-gray-400 hover:border-er-gold'}`}
+            >
+              {compact ? '▦ Dense' : '▦ Normal'}
+            </button>
           </div>
 
           {/* Status with live filter count */}
@@ -371,11 +379,12 @@ export function ARPage() {
                 {displayRows.map((r, i) => (
                   <tr
                     key={r.id}
-                    className={`row-stagger border-b border-er-border/30 hover:bg-er-gold/5 transition-er ${r.ineffectiveAttributes.length > 0 ? 'opacity-60' : ''}`}
+                    onClick={() => setModalWeapon(r)}
+                    className={`row-stagger border-b border-er-border/30 hover:bg-er-gold/10 transition-er cursor-pointer ${compact ? 'text-xs' : ''} ${r.ineffectiveAttributes.length > 0 ? 'opacity-60' : ''}`}
                     style={{ animationDelay: `${Math.min(i * 30, 600)}ms` }}
                   >
-                    <td className="p-2 text-er-muted">{i + 1}</td>
-                    <td className="p-2 font-medium">{r.name}</td>
+                    <td className={compact ? 'py-0.5 px-2' : 'p-2'}>{i + 1}</td>
+                    <td className={compact ? 'py-0.5 px-2 font-medium' : 'p-2 font-medium'}>{r.name}</td>
                     <td className="p-2 text-er-muted">{r.weaponTypeName}</td>
                     <td className="p-2 text-er-muted">{r.affinityName}</td>
                     <td className="p-2 text-right">{r.ar.phys || '–'}</td>
@@ -447,6 +456,51 @@ export function ARPage() {
               <DamageCompareBars resultA={resultA} resultB={resultB} nameA={selectedWeapon?.name ?? 'A'} nameB={compareWeapon?.name ?? 'B'} />
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── WEAPON DETAIL MODAL ────────────────────────────────────────────── */}
+      {modalWeapon && (
+        <div
+          onClick={() => setModalWeapon(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            className="bg-er-surface rounded-lg border border-er-border p-6 max-w-md w-full mx-4 card-glow animate-fade-in-up"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-er text-lg text-gold-grad">{modalWeapon.name}</h3>
+              <button onClick={() => setModalWeapon(null)} className="text-gray-400 hover:text-er-gold transition-er text-xl">✕</button>
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="flex gap-4">
+                <span className="text-er-muted">Type: <span className="text-er-fg">{modalWeapon.weaponTypeName}</span></span>
+                <span className="text-er-muted">Affinity: <span className="text-er-fg">{modalWeapon.affinityName}</span></span>
+              </div>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">PHYS</div><div className="font-semibold">{modalWeapon.ar.phys || '–'}</div></div>
+                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">MAG</div><div className="font-semibold">{modalWeapon.ar.mag || '–'}</div></div>
+                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">FIRE</div><div className="font-semibold">{modalWeapon.ar.fire || '–'}</div></div>
+                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">LIGH</div><div className="font-semibold">{modalWeapon.ar.ligh || '–'}</div></div>
+                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">HOLY</div><div className="font-semibold">{modalWeapon.ar.holy || '–'}</div></div>
+              </div>
+              <div className="bg-er-gold/20 rounded p-2 text-center border border-er-gold/30"><div className="text-xs text-er-muted">Total AR</div><div className="font-semibold text-gold-grad text-lg">{modalWeapon.ar.total}</div></div>
+              <div className="grid grid-cols-5 gap-2">
+                <div className="text-center"><div className="text-xs text-er-muted">STR</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.str)}</div></div>
+                <div className="text-center"><div className="text-xs text-er-muted">DEX</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.dex)}</div></div>
+                <div className="text-center"><div className="text-xs text-er-muted">INT</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.int)}</div></div>
+                <div className="text-center"><div className="text-xs text-er-muted">FAI</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.fai)}</div></div>
+                <div className="text-center"><div className="text-xs text-er-muted">ARC</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.arc)}</div></div>
+              </div>
+              <div className="flex gap-4 text-xs text-er-muted">
+                {modalWeapon.dlc && <span className="text-er-gold">★ DLC</span>}
+                {modalWeapon.paired && <span>⚔ Paired Weapon</span>}
+                {modalWeapon.isSpecialWeapon && <span>✦ Special</span>}
+                {modalWeapon.ineffectiveAttributes.length > 0 && <span className="text-yellow-400">⚠ Ineffective: {modalWeapon.ineffectiveAttributes.join(', ')}</span>}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -602,11 +656,24 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
             {enemies.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
-        {/* Enemy stats compact card */}
+        {/* Enemy stats compact card — properly labeled absorption */}
         {selectedEnemy && (
-          <div className="flex items-center gap-3 text-xs text-er-muted bg-er-bg rounded px-3 py-1.5 border border-er-border animate-fade-in">
-            {result.enemy.hp && <span>❤️ HP: <span className="text-er-fg font-semibold">{result.enemy.hp.toLocaleString()}</span></span>}
-            <span>🛡️ Absorption: <span className="text-er-fg font-semibold">{selectedEnemy.absorption.map(a => `${a}`).join('/')}</span></span>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-er-muted bg-er-bg rounded px-3 py-1.5 border border-er-border animate-fade-in">
+            {result.enemy.hp && (
+              <span>❤️ HP: <span className="text-er-fg font-semibold">
+                {result.enemy.hp.toLocaleString()}
+                {result.enemy.ngCycle ? ` (NG+${result.enemy.ngCycle})` : ''}
+              </span></span>
+            )}
+            <span>🛡️ Abs: <span className="text-er-fg">
+              {[
+                selectedEnemy.absorption[0] != null && `PHYS ${selectedEnemy.absorption[0]}%`,
+                selectedEnemy.absorption[1] != null && `MAG ${selectedEnemy.absorption[1]}%`,
+                selectedEnemy.absorption[2] != null && `FIRE ${selectedEnemy.absorption[2]}%`,
+                selectedEnemy.absorption[3] != null && `LIGH ${selectedEnemy.absorption[3]}%`,
+                selectedEnemy.absorption[4] != null && `HOLY ${selectedEnemy.absorption[4]}%`,
+              ].filter(Boolean).join(' / ')}
+            </span></span>
           </div>
         )}
       </div>
@@ -656,6 +723,41 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
               {b.name}
             </span>
           ))}
+        </div>
+      )}
+
+      {/* Status effect procs */}
+      {result.statusProcs && result.statusProcs.length > 0 && (
+        <div className="animate-fade-in">
+          <div className="text-xs uppercase text-er-muted mb-1 font-er">Status Effects</div>
+          <div className="space-y-1.5">
+            {result.statusProcs.map(sp => {
+              const colors: Record<number, string> = {
+                5: 'bg-green-900/30 border-green-700/40 text-green-300',
+                6: 'bg-orange-900/30 border-orange-700/40 text-orange-300',
+                7: 'bg-red-900/30 border-red-700/40 text-red-300',
+                8: 'bg-blue-900/30 border-blue-700/40 text-blue-300',
+                9: 'bg-purple-900/30 border-purple-700/40 text-purple-300',
+                10: 'bg-pink-900/30 border-pink-700/40 text-pink-300',
+              };
+              const barColor: Record<number, string> = {
+                5: 'bg-green-500', 6: 'bg-orange-500', 7: 'bg-red-500', 8: 'bg-blue-500',
+              };
+              const isInf = !isFinite(sp.hitsToProc);
+              const progress = isInf ? 0 : Math.min(100, (sp.perHit / sp.threshold) * 100);
+              return (
+                <div key={sp.type} className={`rounded border px-3 py-1.5 text-xs ${colors[sp.type] ?? 'bg-gray-900/30 border-gray-700/40 text-gray-300'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">{sp.name}</span>
+                    <span>{sp.perHit}/hit → {isInf ? '∞' : `${sp.hitsToProc} hits to proc`} (resist: {sp.threshold})</span>
+                  </div>
+                  <div className="h-1 bg-er-bg rounded-full overflow-hidden mt-1">
+                    <div className={`h-full rounded-full transition-all duration-500 ${barColor[sp.type] ?? 'bg-gray-500'}`} style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

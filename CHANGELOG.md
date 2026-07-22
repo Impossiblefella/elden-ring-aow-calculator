@@ -1,5 +1,59 @@
 # Changelog
 
+## v1.0.4 (2026-07-22)
+
+### Calculation Features
+
+- **Status proc calculator** — shows how many hits to proc Bleed/Poison/Rot/Frost on the selected enemy, with per-hit buildup and resistance threshold
+- **NG+ cycle selector** — dropdown for NG/NG+1...NG+7, scales enemy HP display (NG+ multiplier: +10% per cycle)
+- **Power Stance toggle** — dual-wield mode that doubles AR for paired weapons
+- **Critical hit modifier** — dropdown for Normal (1.0x), Backstab (1.6x), Riposte (4.0x); applies crit multiplier to damage
+- **Charge AoW toggle** — charged attacks use higher motion values (120 vs 100)
+
+### Data Expansion
+
+- **18 new enemies** (total 34) — Bell Bearing Hunter, Night's Cavalry, Fallingstar Beast, Magma Wyrm, Leonine Misbegotten, Crucible Knight (Ordovis), Dragonkin Soldier, Ancestor Spirit, Regal Ancestor Spirit, Valiant Gargoyle, Black Knife Assassin, Eleonora, Sanguine Noble, Necalli, Black Knife Tiche, Cleanrot Knight, Dung Puppet, Iron Chevalier, Cemetery Shade
+
+### UX / Polish
+
+- **Weapon detail modal** — click any weapon row in the AR table to see full breakdown (base AR, scaling, requirements, DLC status, paired status)
+- **Save/load build presets** — save named builds to localStorage, load them back; build data includes all stats, upgrade, buffs, enemy, NG+, power stance, crit modifier, charged state
+- **Copy build to clipboard** — one-click copy of current build as JSON
+- **Keyboard shortcuts** — Tab switches between pages, `/` focuses search, Esc closes modals
+- **Compact/dense table toggle** — switch between normal and dense row padding in both AR and AoW tables
+- **Fixed enemy absorption card** — properly labeled with element names (PHYS/MAG/FIRE/LIGH/HOLY) instead of raw numbers
+- **NG+ HP display** — shows scaled HP with NG+ cycle noted
+
+---
+
+## v1.0.3 (2026-07-21)
+
+### Design Overhaul
+
+- Gold gradient text/buttons, glassmorphism nav, card hover glow, noise texture overlay, Cinzel font for headers
+- Page fade-in-up transitions, table row stagger animation, damage number count-up, gold ring loading spinner
+- Buff badge slide-in, expand/collapse arrow rotation, pulse animation on update button
+- Sortable header glow on hover, buff tooltips with effects, custom checkboxes with gold fill
+- Damage comparison bars in compare mode, relative damage bars in AoW ranking
+- CSS variable-based theming system, all gray/yellow/red remapped in light theme
+
+---
+
+## v1.0.2 (2026-07-20)
+
+### Added
+
+- **Auto-Updater** — electron-updater integration, checks GitHub Releases on startup, delta/blockmap updates
+- **Check for Updates button** — manual update check from About box
+- **6 Weapon Greases** — Fire, Magic, Lightning, Holy, Poison, Blood
+- **Enemy selector persists across pages** — shared state in BuildContext
+- **Dark/Light theme toggle** — CSS variable-based theming
+- **Custom app icon** — Elden Ring themed gold ring icon
+- **Updater debug log** — %APPDATA%/er-aow-calc/updater.log
+- **preload.cjs IPC bridge** — safe renderer-to-main communication
+
+---
+
 ## v1.0.1 (2026-07-20)
 
 ### Bug Fixes

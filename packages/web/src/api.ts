@@ -71,10 +71,14 @@ export interface AttackRatingResponse {
 }
 
 export interface DamageResponse extends AttackRatingResponse {
-  enemy: { id: string; name: string; hp?: number; statusResistances?: Record<number, number> };
+  enemy: { id: string; name: string; hp?: number; baseHp?: number; statusResistances?: Record<number, number>; ngCycle?: number };
   enemyDamages: Record<number, number>;
   enemyDamageTotal: number;
   activeBuffs?: { id: string; name: string; category: string }[];
+  statusProcs?: { type: number; name: string; perHit: number; threshold: number; hitsToProc: number }[];
+  powerStance?: boolean;
+  critModifier?: number;
+  charged?: boolean;
 }
 
 export interface RankResult {
