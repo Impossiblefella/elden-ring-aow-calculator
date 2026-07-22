@@ -360,17 +360,19 @@ function SettingsBox() {
             value={buildName}
             onChange={e => setBuildName(e.target.value)}
             placeholder="Build name..."
-            className="flex-1 px-2 py-1 bg-er-bg border border-er-border rounded text-xs transition-er focus:border-er-gold focus:outline-none"
+            className="flex-1 min-w-0 px-2 py-1 bg-er-bg border border-er-border rounded text-xs transition-er focus:border-er-gold focus:outline-none"
             onKeyDown={e => { if (e.key === 'Enter') saveCurrentBuild(); }}
           />
-          <button onClick={saveCurrentBuild} className="text-xs px-2 py-1 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold hover:bg-er-gold/30 transition-er">💾 Save</button>
-          <button onClick={copyBuild} className="text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er">{copied ? '✓ Copied!' : '📋 Copy'}</button>
+          <button onClick={saveCurrentBuild} className="text-xs px-2 py-1 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold hover:bg-er-gold/30 transition-er whitespace-nowrap">💾</button>
+        </div>
+        <div className="flex gap-1">
+          <button onClick={copyBuild} className="flex-1 text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er">{copied ? '✓ Copied!' : '📋 Copy Build'}</button>
         </div>
         {savedBuilds.length > 0 && (
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {savedBuilds.map(b => (
               <div key={b.name} className="flex items-center gap-1 animate-fade-in">
-                <button onClick={() => loadBuild(b.name)} className="flex-1 text-left text-xs px-2 py-1 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400">
+                <button onClick={() => loadBuild(b.name)} className="flex-1 min-w-0 truncate text-left text-xs px-2 py-1 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400">
                   {b.name}
                 </button>
                 <button onClick={() => deleteBuild(b.name)} className="text-xs px-1.5 py-1 rounded text-red-400 hover:bg-red-900/20 transition-er">✕</button>
