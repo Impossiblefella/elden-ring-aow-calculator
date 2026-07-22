@@ -115,7 +115,7 @@ export function CharacterBuilder() {
       <div className="grid grid-cols-2 gap-3">
         {STAT_KEYS.map((key) => (
           <div key={key} className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-20 text-right">
+            <label className="text-xs text-gray-400 w-24 text-right whitespace-nowrap">
               {STAT_LABELS[key]}
             </label>
             <input
