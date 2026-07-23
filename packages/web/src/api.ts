@@ -43,6 +43,8 @@ export interface AshOfWarInfo {
   id: number;
   name: string;
   isProjectile: boolean;
+  description?: string;
+  fpCost?: number;
 }
 
 export interface BuffInfo {
@@ -117,6 +119,13 @@ export interface CompareRow {
     holy: number;
     total: number;
   };
+  arParts?: {
+    phys: { base: number; scaled: number };
+    mag: { base: number; scaled: number };
+    fire: { base: number; scaled: number };
+    ligh: { base: number; scaled: number };
+    holy: { base: number; scaled: number };
+  };
   scaling: {
     str: number;
     dex: number;
@@ -129,11 +138,33 @@ export interface CompareRow {
   isSpecialWeapon: boolean;
   dlc: boolean;
   paired: boolean;
+  statusAr: {
+    bleed: number;
+    frost: number;
+    poison: number;
+    scarletRot: number;
+  };
 }
 
 export interface CompareResponse {
   count: number;
   rows: CompareRow[];
+}
+
+export interface OptimalBuildResponse {
+  ashOfWar: { id: number; name: string };
+  enemy: { id: string; name: string } | null;
+  targetRL: number;
+  optimalStats: Record<string, number>;
+  runeLevel: number;
+  topWeapons: {
+    rank: number;
+    weaponId: number;
+    weaponName: string;
+    weaponType: string;
+    affinityName: string;
+    total: number;
+  }[];
 }
 
 export const api = {
@@ -150,4 +181,6 @@ export const api = {
     fetchJson<RankResponse>('/rank', { method: 'POST', body: JSON.stringify(body) }),
   postCompare: (body: Record<string, unknown>) =>
     fetchJson<CompareResponse>('/compare', { method: 'POST', body: JSON.stringify(body) }),
+  postOptimalBuild: (body: Record<string, unknown>) =>
+    fetchJson<OptimalBuildResponse>('/optimal-build', { method: 'POST', body: JSON.stringify(body) }),
 };

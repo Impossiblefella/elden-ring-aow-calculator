@@ -173,8 +173,8 @@ export const BUFF_LIBRARY: Buff[] = [
     aowMultiplier: 0.10, // +10% jump attack damage (AoW-style multiplier)
   },
   {
-    id: "two-headed-turtle-talisman",
-    name: "Two-Headed Turtle Talisman",
+    id: "greenburst-turtle-talisman",
+    name: "Greenburst Turtle Talisman",
     category: "talisman",
     // Stamina recovery — non-damage; included for completeness
   },
@@ -271,6 +271,73 @@ export const BUFF_LIBRARY: Buff[] = [
     flatAdditions: {
       [AttackPowerType.BLEED]: 55,
     },
+  },
+  // ── Additional Talismans & Tears ─────────────────────────────────────────
+  {
+    id: "lord-of-bloods-exultation",
+    name: "Lord of Blood's Exultation",
+    category: "talisman",
+    allDamageMultiplier: 0.20, // +20% damage when bleed procs nearby
+  },
+  {
+    id: "kindred-of-rots-exultation",
+    name: "Kindred of Rot's Exultation",
+    category: "talisman",
+    allDamageMultiplier: 0.20, // +20% damage when poison/rot procs nearby
+  },
+  {
+    id: "thorny-cracked-tear",
+    name: "Thorny Cracked Tear",
+    category: "physick",
+    allDamageMultiplier: 0.15, // consecutive hits damage boost
+  },
+  {
+    id: "dragoncrest-greatshield-talisman",
+    name: "Dragoncrest Greatshield Talisman",
+    category: "talisman",
+    // Damage negation — non-damage; included for completeness
+  },
+  {
+    id: "curved-sword-talisman",
+    name: "Curved Sword Talisman",
+    category: "talisman",
+    allDamageMultiplier: 0.10, // +10% backstep attack damage
+  },
+  {
+    id: "dagger-talisman",
+    name: "Dagger Talisman",
+    category: "talisman",
+    allDamageMultiplier: 0.17, // +17% critical damage
+  },
+  {
+    id: "crimson-seed-talisman",
+    name: "Crimson Seed Talisman",
+    category: "talisman",
+    // HP regen — non-damage; included for completeness
+  },
+  {
+    id: "claw-talisman",
+    name: "Claw Talisman",
+    category: "talisman",
+    aowMultiplier: 0.15, // +15% jump attack damage
+  },
+  {
+    id: "spear-talisman",
+    name: "Spear Talisman",
+    category: "talisman",
+    allDamageMultiplier: 0.12, // +12% spear charge attack damage
+  },
+  {
+    id: "axe-talisman",
+    name: "Axe Talisman",
+    category: "talisman",
+    allDamageMultiplier: 0.10, // +10% charge attack damage
+  },
+  {
+    id: "winged-sword-insignia",
+    name: "Winged Sword Insignia",
+    category: "talisman",
+    allDamageMultiplier: 0.075, // +7.5% consecutive hits (simplified: unconditional)
   },
 ];
 

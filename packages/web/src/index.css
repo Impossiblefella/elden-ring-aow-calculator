@@ -303,3 +303,105 @@ input[type=number] { -moz-appearance: textfield; }
 
 /* Transition utility for interactive elements */
 .transition-er { transition: all 0.2s ease; }
+
+/* ── Reduced motion: accessibility fallback ──────────────────────────────── */
+/* Disables all CSS keyframe animations and transitions for users who prefer
+   reduced motion. framer-motion respects this automatically via its
+   `useReducedMotion` hook, but CSS-based animations need this guard. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-slide-in-left,
+  .animate-slide-out-left,
+  .animate-pulse-gold,
+  .animate-spin-gold,
+  .animate-shimmer,
+  .row-stagger {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+/* ── Print-Friendly Damage Report ────────────────────────────────────────────
+   When the user invokes the browser's Print dialog (window.print()), this
+   stylesheet takes over: it strips the dark theme, hides navigation/controls/
+   decorative elements, and renders a clean white-on-black printable summary
+   of the build, enemy, weapons, and damage breakdown. */
+@media print {
+  /* Force light-on-white palette regardless of theme */
+  :root, .theme-light, .theme-dark {
+    color-scheme: light;
+    --er-bg: #ffffff !important;
+    --er-surface: #ffffff !important;
+    --er-border: #999 !important;
+    --er-fg: #000 !important;
+    --er-muted: #555 !important;
+    --er-gold-grad: #000 !important;
+    --er-glow: none !important;
+    --er-card-glow: none !important;
+  }
+  /* Remove the noise overlay */
+  body::before { display: none !important; }
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    font-size: 11pt;
+  }
+
+  /* Show only the print report — hide everything else */
+  body * { visibility: hidden; }
+  .print-report, .print-report * { visibility: visible; }
+  .print-report {
+    position: absolute;
+    inset: 0;
+    padding: 24pt;
+    background: #fff !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide UI chrome entirely */
+  header, nav, .glass, .no-print, .er-tooltip, .animate-pulse-gold,
+  .animate-spin-gold, .animate-shimmer { display: none !important; }
+
+  /* Undo gold gradient text — use solid black for legibility on paper */
+  .text-gold-grad {
+    background: none !important;
+    -webkit-text-fill-color: #000 !important;
+    color: #000 !important;
+  }
+
+  /* Tables: clean borders, no animation */
+  table { border-collapse: collapse; width: 100%; }
+  th, td {
+    border: 1px solid #ccc !important;
+    padding: 4pt 6pt !important;
+    color: #000 !important;
+    text-align: left;
+  }
+  tr { page-break-inside: avoid; }
+
+  /* Don't break inside sections */
+  .card-glow, .bg-er-surface {
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #ccc !important;
+    background: #fff !important;
+  }
+
+  /* Reset animation delays so content shows immediately */
+  .row-stagger, .animate-fade-in, .animate-fade-in-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

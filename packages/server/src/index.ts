@@ -191,6 +191,27 @@ app.post("/api/attack-rating", (req, res) => {
 
 // ── Compare ALL weapons — returns AR table for every weapon at the given build ─
 // This is what powers the comparison table (like tarnished.dev's weapon calculator).
+// ── Server-side cache for /api/compare ────────────────────────────────────────
+interface CompareCacheEntry { rows: unknown[]; timestamp: number; }
+const compareCache = new Map<string, CompareCacheEntry>();
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+function getCompareCacheKey(attrs: unknown, upgrade: number, twoH: boolean, buffs: string[], wType: number | null, aff: number | null, special: boolean): string {
+  return JSON.stringify({ attrs, upgrade, twoH, buffs: [...buffs].sort(), wType, aff, special });
+}
+
+// Clean old cache entries occasionally
+let lastCacheClean = 0;
+function maybeCleanCache() {
+  const now = Date.now();
+  if (now - lastCacheClean > 60_000) {
+    lastCacheClean = now;
+    for (const [key, entry] of compareCache) {
+      if (now - entry.timestamp > CACHE_TTL) compareCache.delete(key);
+    }
+  }
+}
+
 app.post("/api/compare", (req, res) => {
   const attributes = loadBody(req.body, "attributes") as CharacterStats;
   const upgradeLevel = parseInt(String(loadBody(req.body, "upgradeLevel", false) ?? "25"), 10);
@@ -199,6 +220,16 @@ app.post("/api/compare", (req, res) => {
   const weaponTypeFilter = loadBody(req.body, "weaponType", false) as number | null;
   const affinityFilter = loadBody(req.body, "affinity", false) as number | null;
   const includeSpecial = Boolean(loadBody(req.body, "includeSpecial", false) ?? true);
+  const includeDLC = Boolean(loadBody(req.body, "includeDLC", false) ?? true);
+
+  // Check cache
+  maybeCleanCache();
+  const cacheKey = getCompareCacheKey(attributes, upgradeLevel, twoHanding, buffIds, weaponTypeFilter ?? null, affinityFilter ?? null, includeSpecial) + (includeDLC ? '|dlc' : '|nfdlc');
+  const cached = compareCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    res.json({ count: cached.rows.length, rows: cached.rows });
+    return;
+  }
 
   const activeBuffs = buffIds
     .map((id) => BUFF_LIBRARY.find((b) => b.id === id))
@@ -211,6 +242,7 @@ app.post("/api/compare", (req, res) => {
     if (weaponTypeFilter !== undefined && weaponTypeFilter !== null && weapon.weaponType !== weaponTypeFilter) continue;
     if (affinityFilter !== undefined && affinityFilter !== null && weapon.affinityId !== affinityFilter) continue;
     if (!includeSpecial && (weapon.affinityId as number) === -1) continue;
+    if (!includeDLC && weapon.dlc) continue;
 
     let result;
     try {
@@ -265,6 +297,14 @@ app.post("/api/compare", (req, res) => {
         holy: round(holy),
         total: round(total),
       },
+      // Per-type base + scaled breakdown for damage tooltip
+      arParts: {
+        phys: { base: attackPower[AttackPowerType.PHYSICAL]?.weapon ?? 0, scaled: attackPower[AttackPowerType.PHYSICAL]?.scaled ?? 0 },
+        mag: { base: attackPower[AttackPowerType.MAGIC]?.weapon ?? 0, scaled: attackPower[AttackPowerType.MAGIC]?.scaled ?? 0 },
+        fire: { base: attackPower[AttackPowerType.FIRE]?.weapon ?? 0, scaled: attackPower[AttackPowerType.FIRE]?.scaled ?? 0 },
+        ligh: { base: attackPower[AttackPowerType.LIGHTNING]?.weapon ?? 0, scaled: attackPower[AttackPowerType.LIGHTNING]?.scaled ?? 0 },
+        holy: { base: attackPower[AttackPowerType.HOLY]?.weapon ?? 0, scaled: attackPower[AttackPowerType.HOLY]?.scaled ?? 0 },
+      },
       scaling: {
         str: scalingRow[Attribute.STRENGTH] ?? 0,
         dex: scalingRow[Attribute.DEXTERITY] ?? 0,
@@ -277,11 +317,20 @@ app.post("/api/compare", (req, res) => {
       isSpecialWeapon: (weapon.affinityId as number) === -1,
       dlc: Boolean(weapon.dlc),
       paired: Boolean(weapon.paired),
+      // Status AR for effect filters (bleed, frost, poison, scarlet rot)
+      statusAr: {
+        bleed: attackPower[AttackPowerType.BLEED]?.total ?? 0,
+        frost: attackPower[AttackPowerType.FROST]?.total ?? 0,
+        poison: attackPower[AttackPowerType.POISON]?.total ?? 0,
+        scarletRot: attackPower[AttackPowerType.SCARLET_ROT]?.total ?? 0,
+      },
     });
   }
 
   // Sort by total AR descending by default
   rows.sort((a, b) => b.ar.total - a.ar.total);
+  // Store in cache
+  compareCache.set(cacheKey, { rows, timestamp: Date.now() });
   res.json({ count: rows.length, rows });
 });
 
@@ -1124,6 +1173,324 @@ const ashOfWarCatalog: AshOfWarEntry[] = [
     poiseDamage: 20,
     isProjectile: false,
   },
+  // ── DLC AoWs (Shadow of the Erdtree) ──────────────────────────────────────────
+  {
+    id: 900,
+    name: "Divine Beast Tackle",
+    compatibleWeaponTypes: [
+      92 as WeaponType, // BACKHAND_BLADE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 80,
+    },
+    baseDamage: 120,
+    baseBulletDamage: {},
+    poiseDamage: 42,
+    isProjectile: false,
+  },
+  {
+    id: 901,
+    name: "Spinning Wheel",
+    compatibleWeaponTypes: [
+      92 as WeaponType, // BACKHAND_BLADE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 70,
+    },
+    baseDamage: 80,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
+  },
+  {
+    id: 902,
+    name: "Savage Lion's Claw",
+    compatibleWeaponTypes: [
+      5 as WeaponType,  // GREATSWORD
+      7 as WeaponType,  // COLOSSAL_SWORD
+      11 as WeaponType, // CURVED_GREATSWORD
+      19 as WeaponType, // GREATAXE
+      23 as WeaponType, // GREAT_HAMMER
+      29 as WeaponType, // HALBERD
+      41 as WeaponType, // COLOSSAL_WEAPON
+      93 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.HEAVY, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 75,
+    },
+    baseDamage: 150,
+    baseBulletDamage: {},
+    poiseDamage: 45,
+    isProjectile: false,
+  },
+  {
+    id: 903,
+    name: "Eochaid's Dancing Blade",
+    compatibleWeaponTypes: [
+      3 as WeaponType,  // STRAIGHT_SWORD
+      5 as WeaponType,  // GREATSWORD
+      9 as WeaponType,  // CURVED_SWORD
+      13 as WeaponType, // KATANA
+      15 as WeaponType, // THRUSTING_SWORD
+      93 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 65,
+    },
+    baseDamage: 100,
+    baseBulletDamage: {},
+    poiseDamage: 25,
+    isProjectile: false,
+  },
+  {
+    id: 904,
+    name: "Dryleaf Whirlwind",
+    compatibleWeaponTypes: [
+      88 as WeaponType, // HAND_TO_HAND
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 60,
+    },
+    baseDamage: 90,
+    baseBulletDamage: {},
+    poiseDamage: 20,
+    isProjectile: false,
+  },
+  {
+    id: 905,
+    name: "Beast's Claw",
+    compatibleWeaponTypes: [
+      95 as WeaponType, // BEAST_CLAW
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.HEAVY, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 70,
+    },
+    baseDamage: 110,
+    baseBulletDamage: {},
+    poiseDamage: 28,
+    isProjectile: false,
+  },
+  {
+    id: 906,
+    name: "Flashing Strike",
+    compatibleWeaponTypes: [
+      88 as WeaponType, // HAND_TO_HAND
+      37 as WeaponType, // CLAW
+      95 as WeaponType, // BEAST_CLAW
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY, AffinityId.LIGHTNING],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 65,
+    },
+    baseDamage: 80,
+    baseBulletDamage: {},
+    poiseDamage: 22,
+    isProjectile: false,
+  },
+  {
+    id: 907,
+    name: "Soul Stutter",
+    compatibleWeaponTypes: [
+      57 as WeaponType, // GLINTSTONE_STAFF
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.MAGIC]: 280,
+    },
+    poiseDamage: 20,
+    isProjectile: true,
+  },
+  {
+    id: 908,
+    name: "Rosy Sweep",
+    compatibleWeaponTypes: [
+      89 as WeaponType, // PERFUME_BOTTLE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY, AffinityId.BLOOD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 75,
+    },
+    baseDamage: 90,
+    baseBulletDamage: {},
+    poiseDamage: 24,
+    isProjectile: false,
+  },
+  {
+    id: 909,
+    name: "Deflect Hardtear",
+    compatibleWeaponTypes: [
+      90 as WeaponType, // THRUSTING_SHIELD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, (-1) as AffinityId],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 85,
+    },
+    baseDamage: 130,
+    baseBulletDamage: {},
+    poiseDamage: 40,
+    isProjectile: false,
+  },
+  {
+    id: 910,
+    name: "Blind Spot",
+    compatibleWeaponTypes: [
+      91 as WeaponType, // THROWING_BLADE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY, AffinityId.LIGHTNING],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.PHYSICAL]: 220,
+    },
+    poiseDamage: 15,
+    isProjectile: true,
+  },
+  {
+    id: 911,
+    name: "Favicon Step",
+    compatibleWeaponTypes: [
+      91 as WeaponType, // THROWING_BLADE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.LIGHTNING],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 80,
+    },
+    baseDamage: 60,
+    baseBulletDamage: {
+      [AttackPowerType.LIGHTNING]: 150,
+    },
+    poiseDamage: 18,
+    isProjectile: true,
+  },
+  {
+    id: 912,
+    name: "Wave of Darkness",
+    compatibleWeaponTypes: [
+      94 as WeaponType, // GREAT_KATANA
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.MAGIC, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.MAGIC]: 300,
+    },
+    poiseDamage: 26,
+    isProjectile: true,
+  },
+  {
+    id: 913,
+    name: "Iris of Grace",
+    compatibleWeaponTypes: [
+      93 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.SACRED],
+    damageMotionValues: {
+      [AttackPowerType.HOLY]: 80,
+    },
+    baseDamage: 140,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
+  },
+  {
+    id: 914,
+    name: "Moonlith Light",
+    compatibleWeaponTypes: [
+      93 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.MAGIC]: 400,
+    },
+    poiseDamage: 28,
+    isProjectile: true,
+  },
+  {
+    id: 915,
+    name: "Light Form",
+    compatibleWeaponTypes: [
+      93 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.SACRED],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 80,
+    },
+    baseDamage: 50,
+    baseBulletDamage: {},
+    poiseDamage: 20,
+    isProjectile: false,
+  },
+  {
+    id: 916,
+    name: "Sun Queen Lightning",
+    compatibleWeaponTypes: [
+      25 as WeaponType, // SPEAR
+      28 as WeaponType, // GREAT_SPEAR
+      29 as WeaponType, // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.LIGHTNING],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.LIGHTNING]: 320,
+    },
+    poiseDamage: 25,
+    isProjectile: true,
+  },
+  {
+    id: 917,
+    name: "Dai-Ryu Cloud",
+    compatibleWeaponTypes: [
+      94 as WeaponType, // GREAT_KATANA
+      13 as WeaponType, // KATANA
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.FIRE, AffinityId.BLOOD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 85,
+      [AttackPowerType.FIRE]: 30,
+    },
+    baseDamage: 120,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
+  },
+  {
+    id: 918,
+    name: "Living Shadow",
+    compatibleWeaponTypes: [
+      92 as WeaponType, // BACKHAND_BLADE
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.PHYSICAL]: 280,
+    },
+    poiseDamage: 22,
+    isProjectile: true,
+  },
 ];
 
 app.get("/api/ashes", (_req, res) => res.json(ashOfWarCatalog));
@@ -1137,12 +1504,16 @@ app.post("/api/rank", (req, res) => {
   const twoHanding = Boolean(loadBody(req.body, "twoHanding", false));
   const buffIds = (loadBody(req.body, "buffIds", false) as string[]) ?? [];
   const charged = Boolean(loadBody(req.body, "charged", false) ?? false);
+  const includeDLC = Boolean(loadBody(req.body, "includeDLC", false) ?? true);
 
   const ash = ashOfWarCatalog.find((a) => a.id === ashOfWarId);
   if (!ash) throw new ApiError(404, `Unknown ashId=${ashOfWarId}`);
   const enemy = enemyId ? enemyDatabase.find((e) => e.id === enemyId) : undefined;
 
-  const entries = rankWeapons(decodedWeapons, {
+  // Filter weapons by DLC inclusion
+  const weaponPool = includeDLC ? decodedWeapons : decodedWeapons.filter(w => !w.dlc);
+
+  const entries = rankWeapons(weaponPool, {
     ashOfWar: ash,
     attributes,
     upgradeLevel,
@@ -1172,6 +1543,140 @@ app.post("/api/rank", (req, res) => {
       stance: e.stance,
       dps: round(e.dps),
       breakdown: e.breakdown,
+    })),
+  });
+});
+
+// ── Optimal Build Finder ──────────────────────────────────────────────────────
+// Reverse calculator: given an AoW, enemy, and target RL, finds the optimal
+// stat distribution that maximizes AoW damage. Uses a greedy approach:
+// start with balanced stats, then iteratively shift points toward the stat
+// that most increases damage.
+app.post("/api/optimal-build", (req, res) => {
+  const ashOfWarIdOpt = parseInt(String(loadBody(req.body, "ashOfWarId")), 10);
+  const enemyId = String(loadBody(req.body, "enemyId", false) ?? "");
+  const targetRL = parseInt(String(loadBody(req.body, "targetRL")), 10);
+  const upgradeLevel = parseInt(String(loadBody(req.body, "upgradeLevel", false) ?? "25"), 10);
+  const weaponId = loadBody(req.body, "weaponId", false);
+  const twoHanding = Boolean(loadBody(req.body, "twoHanding", false) ?? false);
+  const buffIds = (loadBody(req.body, "buffIds", false) as string[]) ?? [];
+
+  const ash = ashOfWarCatalog.find((a) => a.id === ashOfWarIdOpt);
+  if (!ash) throw new ApiError(404, `Unknown ashId=${ashOfWarIdOpt}`);
+  const ashEntry: AshOfWarEntry = ash;
+  const enemy = enemyId ? enemyDatabase.find((e) => e.id === enemyId) : undefined;
+
+  // Total stat points available = RL + 79 (since RL1 = 80 total starting stats)
+  const totalPoints = targetRL + 79;
+  // Minimum stats for each attribute
+  const MIN_STAT = 8;
+  const COMBAT_STATS: Attribute[] = [Attribute.STRENGTH, Attribute.DEXTERITY, Attribute.INTELLIGENCE, Attribute.FAITH, Attribute.ARCANE]; // offensive stats to optimize
+  const ALL_STATS: Attribute[] = [Attribute.VIGOR, Attribute.MIND, Attribute.ENDURANCE, ...COMBAT_STATS];
+
+  // Determine which combat stats are relevant for this AoW's compatible weapons
+  // Find compatible weapons
+  const compatibleWeapons = decodedWeapons.filter(w =>
+    ashEntry.compatibleWeaponTypes.includes(w.weaponType)
+  );
+  if (compatibleWeapons.length === 0) {
+    throw new ApiError(400, 'No compatible weapons for this Ash of War');
+  }
+
+  // If weaponId is specified, only use that weapon for scoring
+  const scoringWeapons = weaponId
+    ? compatibleWeapons.filter(w => w === findWeaponById(Number(weaponId)))
+    : compatibleWeapons.slice(0, 20); // sample top 20 compatible weapons
+
+  // Start with balanced stats: give minimum to vigor/mind/endurance, split rest across combat stats
+  const perStat = Math.floor((totalPoints - 60 - 25 - 25) / 5);
+  let bestStats: CharacterStats = {
+    [Attribute.VIGOR]: 60,
+    [Attribute.MIND]: 25,
+    [Attribute.ENDURANCE]: 25,
+    [Attribute.STRENGTH]: Math.max(MIN_STAT, perStat),
+    [Attribute.DEXTERITY]: Math.max(MIN_STAT, perStat),
+    [Attribute.INTELLIGENCE]: Math.max(MIN_STAT, perStat),
+    [Attribute.FAITH]: Math.max(MIN_STAT, perStat),
+    [Attribute.ARCANE]: Math.max(MIN_STAT, perStat),
+  };
+  const remainingPoints = totalPoints - 60 - 25 - 25 - Math.max(MIN_STAT, perStat) * 5;
+  // Distribute leftover points
+  let leftover = remainingPoints;
+  for (const s of COMBAT_STATS) {
+    if (leftover <= 0) break;
+    bestStats[s] = Math.min(99, bestStats[s] + 1);
+    leftover--;
+  }
+
+  // Score function: compute total AoW damage across scoring weapons
+  function scoreStats(stats: CharacterStats): number {
+    let totalDmg = 0;
+    for (const weapon of scoringWeapons) {
+      try {
+        const entries = rankWeapons([weapon], {
+          ashOfWar: ashEntry,
+          attributes: stats,
+          upgradeLevel: clampUpgrade(weapon, upgradeLevel),
+          metric: 'total',
+          enemy,
+          twoHanding,
+          buffIds,
+        });
+        if (entries.length > 0) totalDmg += entries[0].total;
+      } catch { /* skip invalid */ }
+    }
+    return totalDmg;
+  }
+
+  let bestScore = scoreStats(bestStats);
+  let improved = true;
+  let iterations = 0;
+  const MAX_ITER = 100;
+
+  while (improved && iterations < MAX_ITER) {
+    improved = false;
+    iterations++;
+    for (const fromStat of COMBAT_STATS) {
+      if (bestStats[fromStat] <= MIN_STAT) continue;
+      for (const toStat of COMBAT_STATS) {
+        if (fromStat === toStat) continue;
+        if (bestStats[toStat] >= 99) continue;
+        // Try moving one point from fromStat to toStat
+        const testStats = { ...bestStats, [fromStat]: bestStats[fromStat] - 1, [toStat]: bestStats[toStat] + 1 };
+        const testScore = scoreStats(testStats);
+        if (testScore > bestScore) {
+          bestStats = testStats;
+          bestScore = testScore;
+          improved = true;
+        }
+      }
+    }
+  }
+
+  // Get the top weapons for the optimal stats
+  const allCompatible = rankWeapons(compatibleWeapons, {
+    ashOfWar: ashEntry,
+    attributes: bestStats,
+    upgradeLevel,
+    metric: 'total',
+    enemy,
+    twoHanding,
+    buffIds,
+  });
+
+  res.json({
+    ashOfWar: { id: ashEntry.id, name: ashEntry.name },
+    enemy: enemy ? { id: enemy.id, name: enemy.name } : null,
+    targetRL,
+    optimalStats: bestStats,
+    runeLevel: Object.values(bestStats).reduce((a, b) => a + b, 0) - 79,
+    topWeapons: allCompatible.slice(0, 10).map((e) => ({
+      rank: e.rank,
+      weaponId: e.weapon.id,
+      weaponName: e.weapon.name,
+      weaponType: weaponTypeName[e.weapon.weaponType as WeaponType],
+      affinityName: affinityName[e.weapon.affinityId as AffinityId],
+      total: round(e.total),
     })),
   });
 });

@@ -9,12 +9,14 @@
  * persisted to localStorage so the user's build survives page refreshes
  * and app restarts.
  */
-import { useEffect, useState, useCallback, createContext, useContext } from 'react';
+import { useEffect, useState, useCallback, useRef, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { api, type WeaponListItem, type BuffInfo } from './api';
 import { CharacterBuilder, defaultStats, type CharStats } from './components/CharacterBuilder';
 import { ARPage } from './pages/ARPage';
 import { AoWPage } from './pages/AoWPage';
+import { checkForSharedBuild, getShareURL, type BuildStateForShare } from './share';
 
 // ── localStorage persistence ─────────────────────────────────────────────────
 const STORAGE_KEY = 'er-aow-calc:build-v1';
@@ -29,6 +31,7 @@ interface PersistedBuild {
   powerStance: boolean;
   critModifier: number;
   charged: boolean;
+  includeDLC: boolean;
 }
 
 function loadBuild(): Partial<PersistedBuild> {
@@ -73,6 +76,8 @@ interface BuildState {
   setCritModifier: (n: number) => void;
   charged: boolean;
   setCharged: (b: boolean) => void;
+  includeDLC: boolean;
+  setIncludeDLC: (b: boolean) => void;
 }
 
 const BuildContext = createContext<BuildState | null>(null);
@@ -84,7 +89,9 @@ export function useBuild(): BuildState {
 }
 
 function BuildProvider({ children }: { children: React.ReactNode }) {
-  const saved = loadBuild();
+  // Check for a shared build in the URL hash first, then fall back to localStorage
+  const sharedBuild = checkForSharedBuild();
+  const saved = sharedBuild ?? loadBuild();
   const [stats, setStats] = useState<CharStats>(saved.stats ?? defaultStats);
   const [upgradeLevel, setUpgradeLevel] = useState(saved.upgradeLevel ?? 25);
   const [twoHanding, setTwoHanding] = useState(saved.twoHanding ?? false);
@@ -94,13 +101,14 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
   const [powerStance, setPowerStance] = useState<boolean>(saved.powerStance ?? false);
   const [critModifier, setCritModifier] = useState<number>(saved.critModifier ?? 1.0);
   const [charged, setCharged] = useState<boolean>(saved.charged ?? false);
+  const [includeDLC, setIncludeDLC] = useState<boolean>(saved.includeDLC ?? true);
   const [weapons, setWeapons] = useState<WeaponListItem[]>([]);
   const [serverStatus, setServerStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
   // Persist build state to localStorage whenever it changes.
   useEffect(() => {
-    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged });
-  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged]);
+    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC });
+  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC]);
 
   useEffect(() => {
     api.getHealth()
@@ -131,6 +139,7 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
       powerStance, setPowerStance,
       critModifier, setCritModifier,
       charged, setCharged,
+      includeDLC, setIncludeDLC,
     }}>
       {children}
     </BuildContext.Provider>
@@ -142,20 +151,28 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
 function AnimatedRoutes() {
   const location = useLocation();
   return (
-    <div key={location.pathname} className="animate-fade-in-up">
-      <Routes location={location}>
-        <Route path="/" element={<ARPage />} />
-        <Route path="/ar" element={<ARPage />} />
-        <Route path="/aow" element={<AoWPage />} />
-      </Routes>
-    </div>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+      >
+        <Routes location={location}>
+          <Route path="/" element={<ARPage />} />
+          <Route path="/ar" element={<ARPage />} />
+          <Route path="/aow" element={<AoWPage />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
 // ── Nav bar ──────────────────────────────────────────────────────────────────
 
 function NavBar() {
-  const { serverStatus, upgradeLevel, setUpgradeLevel, twoHanding, setTwoHanding, powerStance, setPowerStance, critModifier, setCritModifier, charged, setCharged, ngCycle, setNgCycle } = useBuild();
+  const { serverStatus, upgradeLevel, setUpgradeLevel, twoHanding, setTwoHanding, powerStance, setPowerStance, critModifier, setCritModifier, charged, setCharged, ngCycle, setNgCycle, includeDLC, setIncludeDLC } = useBuild();
 
   return (
     <header className="glass border-b border-er-border sticky top-0 z-20">
@@ -172,30 +189,36 @@ function NavBar() {
             {serverStatus}
           </span>
           {/* Page nav links */}
-          <nav className="flex gap-1 ml-4">
-            <NavLink
-              to="/ar"
-              className={({ isActive }) =>
-                `px-3 py-1 text-sm font-medium rounded transition-er ${
-                  isActive
-                    ? 'btn-gold'
-                    : 'text-gray-400 hover:text-er-gold hover:bg-er-border/20'
-                }`
-              }
-            >
-              Weapon AR
+          <nav className="flex gap-1 ml-4 relative">
+            <NavLink to="/ar" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>Weapon AR</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
             </NavLink>
-            <NavLink
-              to="/aow"
-              className={({ isActive }) =>
-                `px-3 py-1 text-sm font-medium rounded transition-er ${
-                  isActive
-                    ? 'btn-gold'
-                    : 'text-gray-400 hover:text-er-gold hover:bg-er-border/20'
-                }`
-              }
-            >
-              Ash of War
+            <NavLink to="/aow" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>Ash of War</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
             </NavLink>
           </nav>
         </div>
@@ -249,6 +272,11 @@ function NavBar() {
             <input type="checkbox" checked={charged} onChange={(e) => setCharged(e.target.checked)} className="er-checkbox" />
             <span className="text-gray-400">🔥 Charged</span>
           </label>
+          {/* DLC toggle — global, affects both AR table and AoW ranking */}
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer" title="Toggle DLC (Shadow of the Erdtree) weapons and Ashes of War">
+            <input type="checkbox" checked={includeDLC} onChange={(e) => setIncludeDLC(e.target.checked)} className="er-checkbox" />
+            <span className={includeDLC ? 'text-er-gold' : 'text-gray-400'}>★ DLC</span>
+          </label>
         </div>
       </div>
     </header>
@@ -287,11 +315,12 @@ function applyTheme(theme: 'dark' | 'light') {
 }
 
 function SettingsBox() {
-  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, setStats, setUpgradeLevel, setTwoHanding, setBuffIds, setEnemyId, setNgCycle, setPowerStance, setCritModifier, setCharged } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, setStats, setUpgradeLevel, setTwoHanding, setBuffIds, setEnemyId, setNgCycle, setPowerStance, setCritModifier, setCharged, setIncludeDLC } = useBuild();
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const [buildName, setBuildName] = useState('');
   const [savedBuilds, setSavedBuilds] = useState<{name: string; data: PersistedBuild}[]>([]);
   const [copied, setCopied] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     applyTheme(theme);
@@ -308,7 +337,7 @@ function SettingsBox() {
 
   const saveCurrentBuild = () => {
     if (!buildName.trim()) return;
-    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged };
+    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC };
     const newBuilds = [...savedBuilds.filter(b => b.name !== buildName), { name: buildName, data }];
     setSavedBuilds(newBuilds);
     try { localStorage.setItem('er-aow-calc:saved-builds', JSON.stringify(newBuilds)); } catch {}
@@ -322,6 +351,7 @@ function SettingsBox() {
     setStats(d.stats); setUpgradeLevel(d.upgradeLevel); setTwoHanding(d.twoHanding);
     setBuffIds(d.buffIds); setEnemyId(d.enemyId); setNgCycle(d.ngCycle ?? 0);
     setPowerStance(d.powerStance ?? false); setCritModifier(d.critModifier ?? 1.0); setCharged(d.charged ?? false);
+    if (d.includeDLC !== undefined) setIncludeDLC(d.includeDLC);
   };
 
   const deleteBuild = (name: string) => {
@@ -331,12 +361,25 @@ function SettingsBox() {
   };
 
   const copyBuild = () => {
-    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged };
+    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC };
     try {
       navigator.clipboard.writeText(JSON.stringify(data, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {}
+  };
+
+  const shareLink = () => {
+    const buildState: BuildStateForShare = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC };
+    const url = getShareURL(buildState);
+    try {
+      navigator.clipboard.writeText(url);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2500);
+    } catch {
+      // Fallback: select and prompt
+      window.prompt('Copy this share link:', url);
+    }
   };
 
   return (
@@ -369,6 +412,11 @@ function SettingsBox() {
         <div className="flex gap-1">
           <button onClick={copyBuild} className="flex-1 text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er">{copied ? '✓ Copied!' : '📋 Copy Build'}</button>
         </div>
+        <div className="flex gap-1">
+          <button onClick={shareLink} className="flex-1 text-xs px-2 py-1 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold hover:bg-er-gold/30 transition-er">
+            {shareCopied ? '✓ Link Copied!' : '🔗 Share Link'}
+          </button>
+        </div>
         {savedBuilds.length > 0 && (
           <div className="space-y-1 max-h-32 overflow-y-auto">
             {savedBuilds.map(b => (
@@ -391,7 +439,7 @@ function SettingsBox() {
 const isElectron = typeof window !== 'undefined' && (window as any).erApp;
 
 function AboutBox() {
-  const [version, setVersion] = useState('1.0.4');
+  const [version, setVersion] = useState('1.0.6');
   const [patch, setPatch] = useState('1.14');
   const [checking, setChecking] = useState(false);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
@@ -505,7 +553,7 @@ function getBuffTip(id: string): string {
 }
 
 function BuffSelector() {
-  const { buffIds, toggleBuff } = useBuild();
+  const { buffIds, toggleBuff, setBuffIds } = useBuild();
   const [buffs, setBuffs] = useState<BuffInfo[]>([]);
   const [expanded, setExpanded] = useState(false);
 
@@ -523,58 +571,145 @@ function BuffSelector() {
       >
         <span>Buffs</span>
         <span className="flex items-center gap-2">
-          {activeCount > 0 && (
-            <span className="text-xs bg-er-gold/20 text-er-gold px-2 py-0.5 rounded-full animate-fade-in">
-              {activeCount} active
-            </span>
-          )}
+          <AnimatePresence>
+            {activeCount > 0 && (
+              <motion.span
+                key="active-badge"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="text-xs bg-er-gold/20 text-er-gold px-2 py-0.5 rounded-full inline-flex items-center"
+              >
+                {activeCount} active
+              </motion.span>
+            )}
+            {activeCount > 0 && (
+              <motion.button
+                key="clear-all"
+                initial={{ opacity: 0, scale: 0.6 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.6 }}
+                transition={{ duration: 0.2, ease: 'easeOut', delay: 0.04 }}
+                onClick={(e) => { e.stopPropagation(); setBuffIds([]); }}
+                className="text-xs bg-er-bg border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold px-2 py-0.5 rounded-full transition-er"
+              >
+                Clear All
+              </motion.button>
+            )}
+          </AnimatePresence>
           <span className="text-gray-400 transition-transform duration-200" style={{ transform: expanded ? 'rotate(90deg)' : 'rotate(0)' }}>
             ▶
           </span>
         </span>
       </button>
 
-      {expanded && (
-        <div className="space-y-3 animate-fade-in">
-          {BUFF_CATEGORIES.map((cat) => {
-            const catBuffs = buffs.filter((b) => b.category === cat.key);
-            if (catBuffs.length === 0) return null;
-            return (
-              <div key={cat.key}>
-                <p className="text-xs text-gray-500 uppercase mb-1">{cat.label}</p>
-                <div className="space-y-1">
-                  {catBuffs.map((b) => {
-                    const isActive = buffIds.includes(b.id);
-                    const tip = getBuffTip(b.id);
-                    return (
-                      <label
-                        key={b.id}
-                        className={`flex items-center gap-2 cursor-pointer text-xs rounded px-2 py-1 transition-er hover:bg-er-border/20 er-tooltip ${isActive ? 'animate-slide-in-left' : ''}`}
-                        data-tip={tip || undefined}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isActive}
-                          onChange={() => toggleBuff(b.id)}
-                          className="er-checkbox"
-                        />
-                        <span className={isActive ? 'text-er-gold' : 'text-gray-400'}>
-                          {b.name}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="buff-list"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <motion.div
+              className="space-y-3 pt-1"
+              variants={{
+                hidden: {},
+                show: { transition: { staggerChildren: 0.04 } },
+              }}
+              initial="hidden"
+              animate="show"
+            >
+              {BUFF_CATEGORIES.map((cat) => {
+                const catBuffs = buffs.filter((b) => b.category === cat.key);
+                if (catBuffs.length === 0) return null;
+                return (
+                  <motion.div
+                    key={cat.key}
+                    variants={{
+                      hidden: { opacity: 0 },
+                      show: { opacity: 1, transition: { staggerChildren: 0.03 } },
+                    }}
+                  >
+                    <p className="text-xs text-gray-500 uppercase mb-1">{cat.label}</p>
+                    <div className="space-y-1">
+                      {catBuffs.map((b) => {
+                        const isActive = buffIds.includes(b.id);
+                        const tip = getBuffTip(b.id);
+                        return (
+                          <motion.label
+                            key={b.id}
+                            variants={{
+                              hidden: { opacity: 0, x: -8 },
+                              show: { opacity: 1, x: 0 },
+                            }}
+                            transition={{ duration: 0.2, ease: 'easeOut' }}
+                            className={`flex items-center gap-2 cursor-pointer text-xs rounded px-2 py-1 transition-er hover:bg-er-border/20 er-tooltip ${isActive ? 'text-er-gold' : ''}`}
+                            data-tip={tip || undefined}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isActive}
+                              onChange={() => toggleBuff(b.id)}
+                              className="er-checkbox"
+                            />
+                            <span className={isActive ? 'text-er-gold' : 'text-gray-400'}>
+                              {b.name}
+                            </span>
+                          </motion.label>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 // ── App ──────────────────────────────────────────────────────────────────────
+
+function ShortcutHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const SHORTCUTS = [
+    { key: 'Tab',    desc: 'Switch between Weapon AR and Ash of War pages' },
+    { key: '/',      desc: 'Focus search box' },
+    { key: 'Escape', desc: 'Close modal/dialog' },
+    { key: '?',      desc: 'Toggle this help' },
+  ];
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        className="bg-er-surface rounded-lg border border-er-border p-6 max-w-md w-full mx-4 card-glow animate-fade-in-up"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="font-er text-lg text-gold-grad">Keyboard Shortcuts</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-er-gold transition-er text-xl">✕</button>
+        </div>
+        <div className="space-y-2">
+          {SHORTCUTS.map(s => (
+            <div key={s.key} className="flex items-center gap-3 text-sm">
+              <kbd className="min-w-[3rem] text-center px-2 py-1 bg-er-bg border border-er-border rounded text-er-gold font-mono text-xs font-semibold">{s.key}</kbd>
+              <span className="text-gray-300">{s.desc}</span>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4 text-xs text-gray-500 text-center">Press <kbd className="px-1.5 py-0.5 bg-er-bg border border-er-border rounded text-er-gold font-mono">?</kbd> again to close · Click anywhere to dismiss</p>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   return (
@@ -589,6 +724,9 @@ export default function App() {
 function AppInner() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpOpenRef = useRef(false);
+  helpOpenRef.current = helpOpen;
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -609,6 +747,9 @@ function AppInner() {
       } else if (e.key === 'Escape') {
         // Close any open modal (dispatch a custom event)
         window.dispatchEvent(new CustomEvent('er-close-modal'));
+        setHelpOpen(false);
+      } else if (e.key === '?') {
+        setHelpOpen(!helpOpenRef.current);
       }
     };
     window.addEventListener('keydown', handler);
@@ -629,6 +770,7 @@ function AppInner() {
       <footer className="border-t border-er-border py-4 text-center text-xs text-gray-500">
         Built with data parsed from regulation.bin · Formulas verified against community resources
       </footer>
+      <ShortcutHelp open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

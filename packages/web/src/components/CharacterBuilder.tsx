@@ -5,6 +5,7 @@
  * across both the AR page and the AoW page.
  */
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useBuild } from '../App';
 
 export interface CharStats {
@@ -73,11 +74,40 @@ const PRESETS: PresetBuild[] = [
     name: 'RL60 Colossal',
     stats: { vigor: 40, mind: 12, endurance: 30, str: 50, dex: 14, int: 9, fai: 9, arc: 9 },
   },
+  {
+    name: 'RL125 Dex/INT',
+    stats: { vigor: 50, mind: 30, endurance: 25, str: 12, dex: 50, int: 40, fai: 9, arc: 9 },
+  },
+  {
+    name: 'RL150 STR/Faith',
+    stats: { vigor: 55, mind: 30, endurance: 35, str: 50, dex: 14, int: 9, fai: 50, arc: 9 },
+  },
+  {
+    name: 'RL125 Bleed/Dex',
+    stats: { vigor: 50, mind: 25, endurance: 25, str: 14, dex: 60, int: 9, fai: 9, arc: 30 },
+  },
+  {
+    name: 'RL150 ARC/Bleed',
+    stats: { vigor: 55, mind: 25, endurance: 30, str: 14, dex: 14, int: 9, fai: 9, arc: 80 },
+  },
 ];
 
 export function CharacterBuilder() {
   const { stats, setStats } = useBuild();
   const [showPresets, setShowPresets] = useState(false);
+
+  // Rune level = sum of all stats - 79 (base level) + 1
+  // In Elden Ring, you start at RL1 with all stats at 80 total (10*8=80 starting).
+  // Actually RL = sum(stats) - 79 where starting stats sum to 80 (RL1).
+  // Each stat point above its starting value adds 1 RL.
+  // The standard starting class (Wretch) starts at 80 total stats = RL1.
+  // So RL = sum(stats) - 79.
+  const totalStats = Object.values(stats).reduce((a, b) => a + b, 0);
+  const runeLevel = totalStats - 79;
+  const META_LEVELS = [125, 150, 200];
+  const nearestMeta = META_LEVELS.find(m => m >= runeLevel) ?? null;
+  const overMeta = META_LEVELS.filter(m => runeLevel > m);
+  const isHighMeta = runeLevel > 200;
 
   return (
     <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
@@ -91,6 +121,37 @@ export function CharacterBuilder() {
         >
           {showPresets ? '▶ Hide Presets' : '▶ Presets'}
         </button>
+      </div>
+
+      {/* Rune Level display with PvP meta warning */}
+      <div className="mb-3 p-2 rounded bg-er-bg/60 border border-er-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-400">Rune Level</span>
+          <motion.span
+            key={runeLevel}
+            initial={{ scale: 0.8, opacity: 0.5 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.2 }}
+            className={`text-lg font-er font-bold ${isHighMeta ? 'text-red-400' : nearestMeta === runeLevel ? 'text-gold-grad' : 'text-er-gold'}`}
+          >
+            RL{runeLevel}
+          </motion.span>
+        </div>
+        <div className="text-xs text-gray-500 flex items-center gap-1.5">
+          {overMeta.length > 0 && (
+            <span className="text-yellow-500/80">
+              {'⚠ Above RL' + overMeta[overMeta.length - 1]}
+            </span>
+          )}
+          {!overMeta.length && nearestMeta && (
+            <span className="text-gray-500">
+              {nearestMeta - runeLevel > 0 ? `${nearestMeta - runeLevel} to RL${nearestMeta}` : `at RL${nearestMeta}`}
+            </span>
+          )}
+          {isHighMeta && (
+            <span className="text-red-400/80">High for PvP</span>
+          )}
+        </div>
       </div>
 
       {/* Preset build buttons */}

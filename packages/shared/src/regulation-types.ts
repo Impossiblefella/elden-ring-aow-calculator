@@ -153,7 +153,7 @@ export interface RegulationDatabase {
   ashesOfWar?: AshOfWarEntry[];
 }
 
-/** A single Ash of War definition (added when skills support lands). */
+/** A single Ash of War definition. */
 export interface AshOfWarEntry {
   id: number;
   name: string;
@@ -168,6 +168,12 @@ export interface AshOfWarEntry {
   poiseDamage?: number;
   /** If true the skill is a projectile (Bullet) Ash of War. */
   isProjectile: boolean;
+  /** FP cost of the Ash of War skill. */
+  fpCost?: number;
+  /** In-game description of the skill. */
+  description?: string;
+  /** Damage multiplier when charged (e.g. 1.4 = 40% more damage). Default 1.0. */
+  chargeMultiplier?: number;
 }
 
 /** Editable player attributes used by the character builder. */

@@ -5,6 +5,8 @@
  *  - 'compare': two weapons side-by-side with detailed AR + enemy damage + bars
  */
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useBuild } from '../App';
 import {
   api,
@@ -110,22 +112,121 @@ function CountUp({ value, className }: { value: number; className?: string }) {
 // ── Loading spinner (gold ring like the app icon) ────────────────────────────
 function GoldSpinner({ size = 24 }: { size?: number }) {
   return (
-    <div
-      className="animate-spin-gold inline-block rounded-full border-2 border-er-border"
-      style={{
-        width: size, height: size,
-        borderTopColor: 'var(--er-gold)',
-        borderRadius: '50%',
-      }}
-    />
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      {/* Outer gold glow pulse synced with spin */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          width: size,
+          height: size,
+          boxShadow: '0 0 10px 2px rgba(212, 175, 55, 0.5)',
+        }}
+        animate={{
+          opacity: [0.3, 0.7, 0.3],
+          scale: [1, 1.18, 1],
+        }}
+        transition={{
+          duration: 1.2,
+          ease: 'easeInOut',
+          repeat: Infinity,
+        }}
+      />
+      {/* Spinning gold ring */}
+      <motion.div
+        className="inline-block rounded-full border-2 border-er-border"
+        style={{
+          width: size,
+          height: size,
+          borderTopColor: 'var(--er-gold)',
+          borderRadius: '50%',
+        }}
+        animate={{ rotate: 360 }}
+        transition={{
+          duration: 1,
+          ease: 'linear',
+          repeat: Infinity,
+        }}
+      />
+    </div>
+  );
+}
+
+// ── Collapsible weapon type group ──────────────────────────────────────────────
+function GroupedWeaponSection({ typeName, rows, compact, onRowClick }: {
+  typeName: string;
+  rows: CompareRow[];
+  compact: boolean;
+  onRowClick: (r: CompareRow) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <div className="border-b border-er-border">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-er-bg/40 hover:bg-er-gold/5 transition-er text-left"
+      >
+        <motion.span animate={{ rotate: expanded ? 90 : 0 }} className="text-gray-400 text-xs">▶</motion.span>
+        <span className="text-sm font-er text-gold-grad">{typeName}</span>
+        <span className="text-xs text-gray-500">({rows.length})</span>
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <table className="text-sm w-full">
+              <tbody>
+                <AnimatePresence>
+                  {rows.map((r, i) => (
+                    <motion.tr
+                      key={r.id}
+                      layout
+                      onClick={() => onRowClick(r)}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 8 }}
+                      transition={{ duration: 0.15, delay: Math.min(i * 0.01, 0.15) }}
+                      className={`border-b border-er-border/30 hover:bg-er-gold/10 transition-er cursor-pointer ${compact ? 'text-xs' : ''}`}
+                    >
+                      <td className={compact ? 'py-0.5 px-2' : 'p-2'}></td>
+                      <td className={compact ? 'py-0.5 px-2 font-medium' : 'p-2 font-medium'}>{r.name}</td>
+                      <td className="p-2 text-er-muted">{r.affinityName}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.phys.base}  |  Scaling: +${r.arParts.phys.scaled}` : undefined}>{r.ar.phys || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.mag.base}  |  Scaling: +${r.arParts.mag.scaled}` : undefined}>{r.ar.mag || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.fire.base}  |  Scaling: +${r.arParts.fire.scaled}` : undefined}>{r.ar.fire || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.ligh.base}  |  Scaling: +${r.arParts.ligh.scaled}` : undefined}>{r.ar.ligh || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.holy.base}  |  Scaling: +${r.arParts.holy.scaled}` : undefined}>{r.ar.holy || '–'}</td>
+                      <td className="p-2 text-right font-semibold text-gold-grad er-tooltip cursor-help" data-tip={`Base AR + scaling = ${r.ar.total}`}>{r.ar.total}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.str)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.dex)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.int)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.fai)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.arc)}</td>
+                      <td className="p-2 text-center text-xs">{r.dlc && <span className="text-er-gold">★</span>}</td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </table>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
 export function ARPage() {
-  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId, ngCycle, powerStance, critModifier, charged } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, setEnemyId, ngCycle, powerStance, critModifier, charged, includeDLC, setIncludeDLC } = useBuild();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('table');
   const [enemies, setEnemies] = useState<EnemyInfo[]>([]);
   const [compact, setCompact] = useState(false);
+  const [groupByType, setGroupByType] = useState(false);
+  const [effectFilter, setEffectFilter] = useState<string>('');
   const [modalWeapon, setModalWeapon] = useState<CompareRow | null>(null);
 
   // Table mode state
@@ -135,7 +236,6 @@ export function ARPage() {
   const [weaponTypeFilter, setWeaponTypeFilter] = useState<number | ''>('');
   const [affinityFilter, setAffinityFilter] = useState<number | ''>('');
   const [includeSpecial, setIncludeSpecial] = useState(true);
-  const [includeDLC, setIncludeDLC] = useState(true);
   const [hideIneffective, setHideIneffective] = useState(false);
   const [sortKey, setSortKey] = useState<SortKey>('ar.total');
   const [sortAsc, setSortAsc] = useState(false);
@@ -168,11 +268,12 @@ export function ARPage() {
     };
     if (weaponTypeFilter !== '') body.weaponType = weaponTypeFilter;
     if (affinityFilter !== '') body.affinity = affinityFilter;
+    body.includeDLC = includeDLC;
     api.postCompare(body)
       .then(res => setCompareRows(res.rows))
       .catch(e => setError(e instanceof Error ? e.message : 'Error'))
       .finally(() => setLoading(false));
-  }, [mode, stats, upgradeLevel, twoHanding, buffIds, weaponTypeFilter, affinityFilter, includeSpecial]);
+  }, [mode, stats, upgradeLevel, twoHanding, buffIds, weaponTypeFilter, affinityFilter, includeSpecial, includeDLC]);
 
   // Calc single weapon damage
   useEffect(() => {
@@ -196,10 +297,20 @@ export function ARPage() {
       const q = searchTerm.toLowerCase();
       rows = rows.filter(r => r.name.toLowerCase().includes(q));
     }
-    if (!includeDLC) rows = rows.filter(r => !r.dlc);
+    // DLC filtering: includeDLC checkbox hides DLC weapons, UNLESS the effect filter is explicitly "dlc only"
+    if (!includeDLC && effectFilter !== 'dlc') rows = rows.filter(r => !r.dlc);
     if (hideIneffective) rows = rows.filter(r => r.ineffectiveAttributes.length === 0);
+    // Effect filters (using data already present in CompareRow)
+    if (effectFilter === 'paired') rows = rows.filter(r => r.paired);
+    if (effectFilter === 'dlc') rows = rows.filter(r => r.dlc);
+    if (effectFilter === 'special') rows = rows.filter(r => r.isSpecialWeapon);
+    // Status effect filters — weapons with innate status AR
+    if (effectFilter === 'bleed') rows = rows.filter(r => (r.statusAr?.bleed ?? 0) > 0);
+    if (effectFilter === 'frost') rows = rows.filter(r => (r.statusAr?.frost ?? 0) > 0);
+    if (effectFilter === 'poison') rows = rows.filter(r => (r.statusAr?.poison ?? 0) > 0);
+    if (effectFilter === 'rot') rows = rows.filter(r => (r.statusAr?.scarletRot ?? 0) > 0);
     return rows;
-  }, [compareRows, searchTerm, includeDLC, hideIneffective]);
+  }, [compareRows, searchTerm, includeDLC, hideIneffective, effectFilter]);
 
   // Sort
   const sortedRows = useMemo(() => {
@@ -216,6 +327,18 @@ export function ARPage() {
   }, [filteredRows, sortKey, sortAsc]);
 
   const displayRows = sortedRows.slice(0, limit);
+
+  // Group by weapon type (for collapsible grouped display)
+  const groupedRows = useMemo(() => {
+    if (!groupByType) return null;
+    const groups = new Map<string, CompareRow[]>();
+    for (const r of displayRows) {
+      const typeName = r.weaponTypeName;
+      if (!groups.has(typeName)) groups.set(typeName, []);
+      groups.get(typeName)!.push(r);
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [displayRows, groupByType]);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc);
@@ -323,6 +446,27 @@ export function ARPage() {
               <input type="checkbox" checked={hideIneffective} onChange={e => setHideIneffective(e.target.checked)} className="er-checkbox" />
               Hide ineffective
             </label>
+            <div>
+              <label className="text-xs text-er-muted block mb-1">Effect</label>
+              <select
+                value={effectFilter}
+                onChange={e => setEffectFilter(e.target.value)}
+                className="px-2 py-1 bg-er-bg border border-er-border rounded text-sm w-40 transition-er focus:border-er-gold focus:outline-none"
+              >
+                <option value="">All weapons</option>
+                <option value="paired">⚔ Paired only</option>
+                <option value="bleed">🩸 Innate Bleed</option>
+                <option value="frost">❄ Innate Frost</option>
+                <option value="poison">☠ Innate Poison</option>
+                <option value="rot">🤢 Innate Scarlet Rot</option>
+                <option value="dlc">★ DLC only</option>
+                <option value="special">✦ Special only</option>
+              </select>
+            </div>
+            <label className="text-sm flex items-center gap-1 cursor-pointer">
+              <input type="checkbox" checked={groupByType} onChange={e => setGroupByType(e.target.checked)} className="er-checkbox" />
+              📂 Group by type
+            </label>
             <button
               onClick={exportCSV}
               className="ml-auto px-3 py-1 bg-er-gold/20 border border-er-gold/50 text-er-gold rounded text-sm hover:bg-er-gold/30 transition-er"
@@ -334,6 +478,13 @@ export function ARPage() {
               className={`px-3 py-1 rounded text-sm transition-er ${compact ? 'btn-gold' : 'bg-er-surface border border-er-border text-gray-400 hover:border-er-gold'}`}
             >
               {compact ? '▦ Dense' : '▦ Normal'}
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="px-3 py-1 rounded text-sm bg-er-surface border border-er-border text-gray-400 hover:border-er-gold transition-er"
+              title="Print-friendly damage report"
+            >
+              🖨 Report
             </button>
           </div>
 
@@ -352,7 +503,14 @@ export function ARPage() {
             {buffIds.length > 0 && <span className="ml-2 text-yellow-400 animate-fade-in">★ {buffIds.length} buff(s) active</span>}
           </div>
 
-          {/* Table */}
+          {/* Table — grouped or flat */}
+          {groupByType && groupedRows ? (
+            <div className="overflow-x-auto">
+              {groupedRows.map(([typeName, rows]) => (
+                <GroupedWeaponSection key={typeName} typeName={typeName} rows={rows} compact={compact} onRowClick={setModalWeapon} />
+              ))}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="text-sm w-full">
               <thead>
@@ -376,34 +534,42 @@ export function ARPage() {
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map((r, i) => (
-                  <tr
-                    key={r.id}
-                    onClick={() => setModalWeapon(r)}
-                    className={`row-stagger border-b border-er-border/30 hover:bg-er-gold/10 transition-er cursor-pointer ${compact ? 'text-xs' : ''} ${r.ineffectiveAttributes.length > 0 ? 'opacity-60' : ''}`}
-                    style={{ animationDelay: `${Math.min(i * 30, 600)}ms` }}
-                  >
-                    <td className={compact ? 'py-0.5 px-2' : 'p-2'}>{i + 1}</td>
-                    <td className={compact ? 'py-0.5 px-2 font-medium' : 'p-2 font-medium'}>{r.name}</td>
-                    <td className="p-2 text-er-muted">{r.weaponTypeName}</td>
-                    <td className="p-2 text-er-muted">{r.affinityName}</td>
-                    <td className="p-2 text-right">{r.ar.phys || '–'}</td>
-                    <td className="p-2 text-right">{r.ar.mag || '–'}</td>
-                    <td className="p-2 text-right">{r.ar.fire || '–'}</td>
-                    <td className="p-2 text-right">{r.ar.ligh || '–'}</td>
-                    <td className="p-2 text-right">{r.ar.holy || '–'}</td>
-                    <td className="p-2 text-right font-semibold text-gold-grad">{r.ar.total}</td>
-                    <td className="p-2 text-right">{scalingLetter(r.scaling.str)}</td>
-                    <td className="p-2 text-right">{scalingLetter(r.scaling.dex)}</td>
-                    <td className="p-2 text-right">{scalingLetter(r.scaling.int)}</td>
-                    <td className="p-2 text-right">{scalingLetter(r.scaling.fai)}</td>
-                    <td className="p-2 text-right">{scalingLetter(r.scaling.arc)}</td>
-                    <td className="p-2 text-center text-xs">{r.dlc && <span className="text-er-gold">★</span>}</td>
-                  </tr>
-                ))}
+                <AnimatePresence>
+                  {displayRows.map((r, i) => (
+                    <motion.tr
+                      key={r.id}
+                      layout
+                      custom={i}
+                      onClick={() => setModalWeapon(r)}
+                      initial={{ opacity: 0, x: -8 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 8 }}
+                      transition={{ duration: 0.2, ease: 'easeOut', delay: Math.min(i * 0.012, 0.3) }}
+                      className={`border-b border-er-border/30 hover:bg-er-gold/10 transition-er cursor-pointer ${compact ? 'text-xs' : ''} ${r.ineffectiveAttributes.length > 0 ? 'opacity-60' : ''}`}
+                    >
+                      <td className={compact ? 'py-0.5 px-2' : 'p-2'}>{i + 1}</td>
+                      <td className={compact ? 'py-0.5 px-2 font-medium' : 'p-2 font-medium'}>{r.name}</td>
+                      <td className="p-2 text-er-muted">{r.weaponTypeName}</td>
+                      <td className="p-2 text-er-muted">{r.affinityName}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.phys.base}  |  Scaling: +${r.arParts.phys.scaled}` : undefined}>{r.ar.phys || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.mag.base}  |  Scaling: +${r.arParts.mag.scaled}` : undefined}>{r.ar.mag || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.fire.base}  |  Scaling: +${r.arParts.fire.scaled}` : undefined}>{r.ar.fire || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.ligh.base}  |  Scaling: +${r.arParts.ligh.scaled}` : undefined}>{r.ar.ligh || '–'}</td>
+                      <td className="p-2 text-right er-tooltip cursor-help" data-tip={r.arParts ? `Base: ${r.arParts.holy.base}  |  Scaling: +${r.arParts.holy.scaled}` : undefined}>{r.ar.holy || '–'}</td>
+                      <td className="p-2 text-right font-semibold text-gold-grad er-tooltip cursor-help" data-tip={`Click row for full damage breakdown vs ${enemies.find(e => e.id === enemyId)?.name ?? 'raw (no enemy)'}`}>{r.ar.total}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.str)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.dex)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.int)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.fai)}</td>
+                      <td className="p-2 text-right">{scalingLetter(r.scaling.arc)}</td>
+                      <td className="p-2 text-center text-xs">{r.dlc && <span className="text-er-gold">★</span>}</td>
+                    </motion.tr>
+                  ))}
+                </AnimatePresence>
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Load more */}
           {sortedRows.length > limit && (
@@ -454,49 +620,145 @@ export function ARPage() {
       )}
 
       {/* ── WEAPON DETAIL MODAL ────────────────────────────────────────────── */}
-      {modalWeapon && (
-        <div
-          onClick={() => setModalWeapon(null)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-        >
-          <div
-            onClick={e => e.stopPropagation()}
-            className="bg-er-surface rounded-lg border border-er-border p-6 max-w-md w-full mx-4 card-glow animate-fade-in-up"
+      <AnimatePresence>
+        {modalWeapon && (
+          <motion.div
+            key="weapon-modal"
+            onClick={() => setModalWeapon(null)}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-er text-lg text-gold-grad">{modalWeapon.name}</h3>
-              <button onClick={() => setModalWeapon(null)} className="text-gray-400 hover:text-er-gold transition-er text-xl">✕</button>
-            </div>
-            <div className="space-y-3 text-sm">
-              <div className="flex gap-4">
-                <span className="text-er-muted">Type: <span className="text-er-fg">{modalWeapon.weaponTypeName}</span></span>
-                <span className="text-er-muted">Affinity: <span className="text-er-fg">{modalWeapon.affinityName}</span></span>
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.92, y: 24 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="bg-er-surface rounded-lg border border-er-border p-6 max-w-md w-full mx-4 card-glow"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-er text-lg text-gold-grad">{modalWeapon.name}</h3>
+                <button onClick={() => setModalWeapon(null)} className="text-gray-400 hover:text-er-gold transition-er text-xl">✕</button>
               </div>
-              <div className="grid grid-cols-5 gap-2">
-                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">PHYS</div><div className="font-semibold">{modalWeapon.ar.phys || '–'}</div></div>
-                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">MAG</div><div className="font-semibold">{modalWeapon.ar.mag || '–'}</div></div>
-                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">FIRE</div><div className="font-semibold">{modalWeapon.ar.fire || '–'}</div></div>
-                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">LIGH</div><div className="font-semibold">{modalWeapon.ar.ligh || '–'}</div></div>
-                <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">HOLY</div><div className="font-semibold">{modalWeapon.ar.holy || '–'}</div></div>
+              <div className="space-y-3 text-sm">
+                <div className="flex gap-4">
+                  <span className="text-er-muted">Type: <span className="text-er-fg">{modalWeapon.weaponTypeName}</span></span>
+                  <span className="text-er-muted">Affinity: <span className="text-er-fg">{modalWeapon.affinityName}</span></span>
+                </div>
+                <div className="grid grid-cols-5 gap-2">
+                  <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">PHYS</div><div className="font-semibold">{modalWeapon.ar.phys || '–'}</div></div>
+                  <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">MAG</div><div className="font-semibold">{modalWeapon.ar.mag || '–'}</div></div>
+                  <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">FIRE</div><div className="font-semibold">{modalWeapon.ar.fire || '–'}</div></div>
+                  <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">LIGH</div><div className="font-semibold">{modalWeapon.ar.ligh || '–'}</div></div>
+                  <div className="bg-er-bg rounded p-2 text-center"><div className="text-xs text-er-muted">HOLY</div><div className="font-semibold">{modalWeapon.ar.holy || '–'}</div></div>
+                </div>
+                <div className="bg-er-gold/20 rounded p-2 text-center border border-er-gold/30"><div className="text-xs text-er-muted">Total AR</div><div className="font-semibold text-gold-grad text-lg">{modalWeapon.ar.total}</div></div>
+                <div className="grid grid-cols-5 gap-2">
+                  <div className="text-center"><div className="text-xs text-er-muted">STR</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.str)}</div></div>
+                  <div className="text-center"><div className="text-xs text-er-muted">DEX</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.dex)}</div></div>
+                  <div className="text-center"><div className="text-xs text-er-muted">INT</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.int)}</div></div>
+                  <div className="text-center"><div className="text-xs text-er-muted">FAI</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.fai)}</div></div>
+                  <div className="text-center"><div className="text-xs text-er-muted">ARC</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.arc)}</div></div>
+                </div>
+                <div className="flex gap-4 text-xs text-er-muted">
+                  {modalWeapon.dlc && <span className="text-er-gold">★ DLC</span>}
+                  {modalWeapon.paired && <span>⚔ Paired Weapon</span>}
+                  {modalWeapon.isSpecialWeapon && <span>✦ Special</span>}
+                  {modalWeapon.ineffectiveAttributes.length > 0 && <span className="text-yellow-400">⚠ Ineffective: {modalWeapon.ineffectiveAttributes.join(', ')}</span>}
+                </div>
+                {/* Jump to AoW rank page */}
+                <button
+                  onClick={() => { setModalWeapon(null); navigate('/aow'); }}
+                  className="mt-4 w-full px-3 py-2 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold text-sm font-medium hover:bg-er-gold/30 transition-er"
+                >
+                  View in AoW Ranking →
+                </button>
               </div>
-              <div className="bg-er-gold/20 rounded p-2 text-center border border-er-gold/30"><div className="text-xs text-er-muted">Total AR</div><div className="font-semibold text-gold-grad text-lg">{modalWeapon.ar.total}</div></div>
-              <div className="grid grid-cols-5 gap-2">
-                <div className="text-center"><div className="text-xs text-er-muted">STR</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.str)}</div></div>
-                <div className="text-center"><div className="text-xs text-er-muted">DEX</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.dex)}</div></div>
-                <div className="text-center"><div className="text-xs text-er-muted">INT</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.int)}</div></div>
-                <div className="text-center"><div className="text-xs text-er-muted">FAI</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.fai)}</div></div>
-                <div className="text-center"><div className="text-xs text-er-muted">ARC</div><div className="font-semibold">{scalingLetter(modalWeapon.scaling.arc)}</div></div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Print-only damage report (visible only during window.print()) ──── */}
+      <div className="print-report hidden print:block">
+        <h1 className="font-er text-2xl mb-4">⚔ Elden Ring — Damage Report</h1>
+        <section className="mb-4">
+          <h2 className="font-er text-lg border-b border-er-border pb-1 mb-2">Character Build</h2>
+          <p>Rune Level: <strong>{Object.values(stats).reduce((a, b) => a + b, 0) - 79}</strong></p>
+          <table>
+            <thead><tr><th>VIG</th><th>MND</th><th>END</th><th>STR</th><th>DEX</th><th>INT</th><th>FAI</th><th>ARC</th></tr></thead>
+            <tbody><tr>
+              <td>{stats.vigor}</td><td>{stats.mind}</td><td>{stats.endurance}</td>
+              <td>{stats.str}</td><td>{stats.dex}</td><td>{stats.int}</td><td>{stats.fai}</td><td>{stats.arc}</td>
+            </tr></tbody>
+          </table>
+          <p className="mt-2 text-xs">
+            Upgrade +{upgradeLevel} · {twoHanding ? 'Two-Handing' : 'One-Handing'}
+            {powerStance && ' · Power Stance'}{charged && ' · Charged'} · Crit: ×{critModifier} · NG+{ngCycle}
+            {buffIds.length > 0 && ` · Buffs: ${buffIds.join(', ')}`}
+          </p>
+        </section>
+
+        <section className="mb-4">
+          <h2 className="font-er text-lg border-b border-er-border pb-1 mb-2">Enemy Target</h2>
+          <p>{enemies.find(e => e.id === enemyId)?.name ?? enemyId}</p>
+        </section>
+
+        {(resultA || mode === 'table') && (
+          <section className="mb-4">
+            <h2 className="font-er text-lg border-b border-er-border pb-1 mb-2">
+              {mode === 'table' ? 'Top 10 Weapons' : 'Weapon Damage Breakdown'}
+            </h2>
+            {mode === 'table' ? (
+              <table>
+                <thead><tr><th>#</th><th>Name</th><th>Type</th><th>Affinity</th><th>Total AR</th></tr></thead>
+                <tbody>
+                  {sortedRows.slice(0, 10).map((r, i) => (
+                    <tr key={r.id}>
+                      <td>{i + 1}</td><td>{r.name}</td><td>{r.weaponTypeName}</td>
+                      <td>{r.affinityName}</td><td>{r.ar.total}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : resultA && (
+              <div>
+                <h3 className="font-er text-base mb-1">{resultA.weapon.name}</h3>
+                <p>Total AR: {resultA.totalAR} · Total Damage: {Math.round(resultA.enemyDamageTotal)}</p>
+                <table className="mt-2">
+                  <thead><tr><th>Type</th><th>Base AR</th><th>Scaling</th><th>Total AR</th><th>Enemy Damage</th></tr></thead>
+                  <tbody>
+                    {Object.entries(resultA.enemyDamages).map(([k, v]) => {
+                      const ap = resultA.attackPower[Number(k)];
+                      return (
+                        <tr key={k}>
+                          <td>{DMG_NAMES[Number(k)] || k}</td>
+                          <td>{ap?.weapon ?? 0}</td><td>{ap?.scaled ?? 0}</td>
+                          <td>{ap?.total ?? 0}</td><td>{Math.round(v)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex gap-4 text-xs text-er-muted">
-                {modalWeapon.dlc && <span className="text-er-gold">★ DLC</span>}
-                {modalWeapon.paired && <span>⚔ Paired Weapon</span>}
-                {modalWeapon.isSpecialWeapon && <span>✦ Special</span>}
-                {modalWeapon.ineffectiveAttributes.length > 0 && <span className="text-yellow-400">⚠ Ineffective: {modalWeapon.ineffectiveAttributes.join(', ')}</span>}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+            )}
+          </section>
+        )}
+
+        {mode === 'compare' && resultB && (
+          <section className="mb-4">
+            <h2 className="font-er text-lg border-b border-er-border pb-1 mb-2">Weapon B: {compareWeapon?.name ?? ''}</h2>
+            <p>Total AR: {resultB.totalAR} · Total Damage: {Math.round(resultB.enemyDamageTotal)}</p>
+          </section>
+        )}
+
+        <p className="text-xs mt-6 text-gray-500">
+          Generated by Elden Ring AoW Calculator · {new Date().toLocaleString()}
+        </p>
+      </div>
     </div>
   );
 }
@@ -689,7 +951,12 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
             v && (
               <div key={k} className="bg-er-bg rounded p-2 text-center card-glow">
                 <div className="text-xs text-er-muted">{DMG_NAMES[Number(k)] || k}</div>
-                <div className="font-semibold"><CountUp value={v.total} /></div>
+                <div
+                  className="font-semibold er-tooltip cursor-help inline-block"
+                  data-tip={`Base: ${v.weapon}  |  Scaling: +${v.scaled}  |  Total: ${v.total}`}
+                >
+                  <CountUp value={v.total} />
+                </div>
               </div>
             )
           ))}
@@ -704,15 +971,44 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
       <div>
         <div className="text-xs uppercase text-er-muted mb-1 font-er">Damage vs {result.enemy.name}</div>
         <div className="grid grid-cols-5 gap-2">
-          {Object.entries(result.enemyDamages).map(([k, v]) => (
-            <div key={k} className="bg-er-bg rounded p-2 text-center card-glow">
-              <div className="text-xs text-er-muted">{DMG_NAMES[Number(k)] || k}</div>
-              <div className="font-semibold"><CountUp value={Math.round(v)} /></div>
-            </div>
-          ))}
+          {Object.entries(result.enemyDamages).map(([k, v]) => {
+            const dmgKey = Number(k);
+            const ap = result.attackPower[dmgKey];
+            const arTotal = ap?.total ?? 0;
+            const absorbed = Math.round(v);
+            const tooltipParts = [
+              `Base AR: ${ap?.weapon ?? 0}`,
+              `Scaling: +${ap?.scaled ?? 0}`,
+              `Buffed AR: ${arTotal}`,
+            ];
+            if (selectedEnemy) {
+              const defIdx = [0, 1, 2, 3, 4].indexOf(dmgKey);
+              const defVal = defIdx >= 0 ? selectedEnemy.defence[defIdx] : null;
+              const absVal = defIdx >= 0 ? selectedEnemy.absorption[defIdx] : null;
+              if (defVal != null) tooltipParts.push(`Def: −${Math.round(defVal * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`);
+              if (absVal != null) tooltipParts.push(`Abs: ${absVal}% reduction`);
+            }
+            tooltipParts.push(`Final: ${absorbed}`);
+            return (
+              <div key={k} className="bg-er-bg rounded p-2 text-center card-glow">
+                <div className="text-xs text-er-muted">{DMG_NAMES[dmgKey] || k}</div>
+                <div
+                  className="font-semibold er-tooltip cursor-help inline-block"
+                  data-tip={tooltipParts.join('  |  ')}
+                >
+                  <CountUp value={absorbed} />
+                </div>
+              </div>
+            );
+          })}
           <div className="bg-red-900/30 rounded p-2 text-center col-span-5 border border-red-700/30">
             <div className="text-xs text-er-muted">Total Damage</div>
-            <div className="font-semibold text-red-300 text-lg"><CountUp value={Math.round(result.enemyDamageTotal)} /></div>
+            <div
+              className="font-semibold text-red-300 text-lg er-tooltip cursor-help inline-block"
+              data-tip={`Sum of all per-type damage after defence & absorption`}
+            >
+              <CountUp value={Math.round(result.enemyDamageTotal)} />
+            </div>
           </div>
         </div>
       </div>

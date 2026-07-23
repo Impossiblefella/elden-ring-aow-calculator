@@ -170,7 +170,7 @@ export function decodeWeapon(
     paired: raw.paired ?? false,
     sorceryTool: raw.sorceryTool ?? false,
     incantationTool: raw.incantationTool ?? false,
-    dlc: raw.dlc ?? false,
+    dlc: raw.dlc ?? (raw.id >= 3000),
     isSpecialWeapon: reinforce.length - 1 < 11,
     attack,
     attributeScaling,

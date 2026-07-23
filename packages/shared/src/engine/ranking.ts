@@ -18,6 +18,13 @@ import { damageAgainstEnemy } from "./defense";
 import { getMotionValueTable } from "./motion-values";
 import { applyBuffs, getBuff } from "./buffs";
 import type { Enemy } from "./enemy";
+import {
+  bleedProcDamage,
+  frostProcDamage,
+  poisonProcDps,
+  scarletRotProcDps,
+  procsToTrigger,
+} from "./status";
 
 export type RankingMetric =
   | "projectile"
@@ -34,6 +41,12 @@ export interface RankingOptions {
   metric?: RankingMetric;
   twoHanding?: boolean;
   buffIds?: string[];
+  /** Critical hit multiplier (1.0 = normal, 1.6 = backstab, 4.0 = riposte). */
+  critModifier?: number;
+  /** If true, skill is charged — applies chargeMultiplier to skill damage. */
+  charged?: boolean;
+  /** If true, power stance — applies 1.5x to weapon AR before AoW calc. */
+  powerStance?: boolean;
 }
 
 export interface RankingEntry {
@@ -89,12 +102,118 @@ function estimateAoWDPS(totalDamage: number, ash: AshOfWarEntry): number {
 }
 
 // ── Main ranking ───────────────────────────────────────────────────────────
+// ── Enemy type multipliers ──────────────────────────────────────────────────
+/**
+ * Compute the weapon-type-specific multiplier vs an enemy's type tags.
+ * Elden Ring weapons have inherent enemy-type multipliers (e.g. Holy weapons
+ * deal bonus damage to Undead/Living in Death). If the weapon defines
+ * `enemyDamageMultipliers`, look up the enemy's `enemyTypes` tags and multiply
+ * them together. Multipliers are stored as integers (e.g. 110 = +10%).
+ */
+function getEnemyTypeMultiplier(
+  weapon: Weapon,
+  enemy: Enemy | undefined,
+): number {
+  if (!enemy?.enemyTypes || !weapon.enemyDamageMultipliers) return 1;
+  let mult = 1;
+  for (const tag of enemy.enemyTypes) {
+    const m = weapon.enemyDamageMultipliers[tag];
+    if (m) mult *= m / 100;
+  }
+  return mult;
+}
+
+// ── Status proc damage ─────────────────────────────────────────────────────
+/**
+ * Estimate the expected damage contribution from status procs during an AoW
+ * attack sequence. Uses the enemy's HP and status resistances to compute
+ * how many hits to proc, then the proc damage.
+ *
+ * Bleed: 15% max HP + 100 flat per proc
+ * Frost: 10% max HP + 30 flat per proc
+ * Poison: DPS × assumed proc duration (we use full duration = HP/avg_dps)
+ * Scarlet Rot: same approach as poison
+ */
+function estimateStatusProcDamage(
+  bleedAmt: number,
+  frostAmt: number,
+  poisonAmt: number,
+  rotAmt: number,
+  enemy: Enemy | undefined,
+): number {
+  if (!enemy?.hp || !enemy?.statusResistances) {
+    // No enemy HP data: return raw status AR as a rough estimate
+    return bleedAmt * 1.5 + frostAmt + poisonAmt + rotAmt;
+  }
+
+  const hp = enemy.hp;
+  let totalProcDamage = 0;
+
+  // Bleed proc
+  if (bleedAmt > 0) {
+    const resist = enemy.statusResistances[AttackPowerType.BLEED] ?? 0;
+    const hits = procsToTrigger({
+      buildupPerHit: bleedAmt,
+      threshold: resist,
+      enemyResistance: resist,
+    });
+    if (hits < 50) {
+      // Each proc deals 15% HP + 100; assume ~1 proc per attack sequence
+      totalProcDamage += bleedProcDamage(hp) / hits;
+    }
+  }
+
+  // Frost proc
+  if (frostAmt > 0) {
+    const resist = enemy.statusResistances[AttackPowerType.FROST] ?? 0;
+    const hits = procsToTrigger({
+      buildupPerHit: frostAmt,
+      threshold: resist,
+      enemyResistance: resist,
+    });
+    if (hits < 50) {
+      totalProcDamage += frostProcDamage(hp) / hits;
+    }
+  }
+
+  // Poison proc: DPS × duration (assume ~30s effective for a fight)
+  if (poisonAmt > 0) {
+    const resist = enemy.statusResistances[AttackPowerType.POISON] ?? 0;
+    const hits = procsToTrigger({
+      buildupPerHit: poisonAmt,
+      threshold: resist,
+      enemyResistance: resist,
+    });
+    if (hits < 50) {
+      totalProcDamage += (poisonProcDps("base") * 30) / hits;
+    }
+  }
+
+  // Scarlet Rot proc: DPS × duration (assume ~30s effective)
+  if (rotAmt > 0) {
+    const resist = enemy.statusResistances[AttackPowerType.SCARLET_ROT] ?? 0;
+    const hits = procsToTrigger({
+      buildupPerHit: rotAmt,
+      threshold: resist,
+      enemyResistance: resist,
+    });
+    if (hits < 50) {
+      totalProcDamage += (scarletRotProcDps("base") * 30) / hits;
+    }
+  }
+
+  return totalProcDamage;
+}
+
 export function rankWeapons(
   weapons: Weapon[],
   options: RankingOptions,
 ): RankingEntry[] {
   const metric = options.metric ?? "total";
   const buffIds = options.buffIds ?? [];
+  const critModifier = options.critModifier ?? 1.0;
+  const isCharged = options.charged ?? false;
+  const isPowerStance = options.powerStance ?? false;
   const entries: RankingEntry[] = [];
 
   // Compute the AoW-specific multiplier from talismans (e.g. Shard of
@@ -108,6 +227,10 @@ export function rankWeapons(
     }
   }
 
+  // Charge multiplier: most AoWs with chargeable property get ~1.4x when charged.
+  // If the AoW defines its own chargeMultiplier, use that; otherwise default 1.4.
+  const chargeMult = isCharged ? (options.ashOfWar.chargeMultiplier ?? 1.4) : 1.0;
+
   for (const weapon of weapons) {
     if (!isWeaponCompatible(weapon, options.ashOfWar)) continue;
 
@@ -118,19 +241,34 @@ export function rankWeapons(
       twoHanding: options.twoHanding ?? false,
     });
 
-    // Apply normal buffs (aura, body, talisman, physick, greases) to AR.
-    // The aowMultiplier is handled separately below.
-    let buffedWeaponAttack = ar;
-    if (buffIds.length > 0) {
-      const buffResult = applyBuffs(ar, buffIds);
-      buffedWeaponAttack = {
+    // Power stance: applies a 1.5x multiplier to weapon AR (simplified:
+    // uses the off-hand weapon's contribution as +50% of main-hand AR).
+    let baseAR = ar;
+    if (isPowerStance) {
+      baseAR = {
         ...ar,
         attackPower: Object.fromEntries(
           Object.entries(ar.attackPower).map(([k, v]) => {
+            if (!v) return [k, v];
+            return [k, { ...v, total: Math.round(v.total * 1.5) }];
+          }),
+        ) as typeof ar.attackPower,
+      };
+    }
+
+    // Apply normal buffs (aura, body, talisman, physick, greases) to AR.
+    // The aowMultiplier is handled separately below.
+    let buffedWeaponAttack = baseAR;
+    if (buffIds.length > 0) {
+      const buffResult = applyBuffs(baseAR, buffIds);
+      buffedWeaponAttack = {
+        ...baseAR,
+        attackPower: Object.fromEntries(
+          Object.entries(baseAR.attackPower).map(([k, v]) => {
             const buffed = buffResult.attackPower[Number(k) as AttackPowerType];
             return [k, v ? { ...v, total: buffed ?? v.total } : v];
           }),
-        ) as typeof ar.attackPower,
+        ) as typeof baseAR.attackPower,
       };
     }
 
@@ -149,9 +287,20 @@ export function rankWeapons(
       aowType = "simple";
     }
 
-    // Apply AoW-specific multiplier (Shard of Alexander, Raptor's Black Feathers)
+    // Apply AoW-specific multipliers:
+    //  - aowMult: Shard of Alexander, Raptor's Black Feathers
+    //  - chargeMult: charged skill bonus
+    //  - critModifier: backstab/riposte multiplier (only for melee-type AoWs)
     for (const apt of allDamageTypes) {
-      if (skillDamage[apt]) skillDamage[apt] = skillDamage[apt]! * aowMult;
+      if (skillDamage[apt]) {
+        let dmg = skillDamage[apt]! * aowMult * chargeMult;
+        // Crit modifier applies to enhanced and simple hit AoWs (melee),
+        // not to projectile AoWs.
+        if (!options.ashOfWar.isProjectile) {
+          dmg *= critModifier;
+        }
+        skillDamage[apt] = dmg;
+      }
     }
 
     // Apply enemy defence + absorption if provided
@@ -165,23 +314,38 @@ export function rankWeapons(
       for (const apt of allDamageTypes) skillTotal += skillDamage[apt] ?? 0;
     }
 
+    // Apply enemy-type multipliers (e.g. holy bonus vs undead)
+    const enemyTypeMult = getEnemyTypeMultiplier(weapon, options.enemy);
+    if (enemyTypeMult !== 1) {
+      skillTotal *= enemyTypeMult;
+      for (const apt of allDamageTypes) {
+        if (breakdown[apt]) breakdown[apt] = breakdown[apt]! * enemyTypeMult;
+      }
+    }
+
     // Status buildup: frost + bleed + poison + scarlet rot (use buffed AR for greases)
     const bleedAmt = buffedWeaponAttack.attackPower[AttackPowerType.BLEED]?.total ?? 0;
     const frostAmt = buffedWeaponAttack.attackPower[AttackPowerType.FROST]?.total ?? 0;
     const poisonAmt = buffedWeaponAttack.attackPower[AttackPowerType.POISON]?.total ?? 0;
     const rotAmt = buffedWeaponAttack.attackPower[AttackPowerType.SCARLET_ROT]?.total ?? 0;
-    const statusAmt = bleedAmt + frostAmt + poisonAmt + rotAmt;
+    const rawStatusAmt = bleedAmt + frostAmt + poisonAmt + rotAmt;
+
+    // Status proc damage: compute actual proc damage (bleed 15% HP, frost 10% HP, etc.)
+    // This replaces the old raw-status-AR sum with expected proc damage contribution.
+    const statusAmt = estimateStatusProcDamage(
+      bleedAmt, frostAmt, poisonAmt, rotAmt, options.enemy,
+    );
 
     // Stance damage from the AoW
     const stanceDamage = options.ashOfWar.poiseDamage ?? STANCE_BASE[aowType];
 
-    // DPS estimation
-    const dps = estimateAoWDPS(skillTotal, options.ashOfWar);
+    // DPS estimation (includes status proc damage contribution)
+    const dps = estimateAoWDPS(skillTotal + statusAmt, options.ashOfWar);
 
     entries.push({
       rank: 0,
       weapon,
-      total: skillTotal,
+      total: skillTotal + statusAmt,
       projectile: options.ashOfWar.isProjectile ? skillTotal : 0,
       status: statusAmt,
       stance: stanceDamage,
