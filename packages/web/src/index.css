@@ -143,38 +143,12 @@ body::before {
 }
 .animate-slide-in-left { animation: slideInLeft 0.3s ease-out forwards; }
 
-@keyframes slideOutLeft {
-  from { opacity: 1; transform: translateX(0); }
-  to { opacity: 0; transform: translateX(-20px); }
-}
-.animate-slide-out-left { animation: slideOutLeft 0.2s ease-in forwards; }
-
 @keyframes pulseGold {
   0%, 100% { box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.4); }
   50% { box-shadow: 0 0 0 8px rgba(212, 175, 55, 0); }
 }
 .animate-pulse-gold { animation: pulseGold 2s ease-in-out infinite; }
 
-@keyframes spinGold {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-.animate-spin-gold { animation: spinGold 1s linear infinite; }
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.animate-shimmer {
-  background: linear-gradient(90deg,
-    transparent 0%,
-    rgba(212, 175, 55, 0.08) 50%,
-    transparent 100%);
-  background-size: 200% 100%;
-  animation: shimmer 2s ease-in-out infinite;
-}
-
-/* Row stagger — each row animates with a slight delay */
 @keyframes rowStagger {
   from { opacity: 0; transform: translateX(-8px); }
   to { opacity: 1; transform: translateX(0); }
@@ -220,7 +194,7 @@ input[type="range"]::-moz-range-thumb {
 }
 
 /* ── Custom checkbox ────────────────────────────────────────────────────── */
-input[type="checkbox"].er-check {
+input[type="checkbox"].er-checkbox {
   -webkit-appearance: none;
   appearance: none;
   width: 16px;
@@ -320,10 +294,7 @@ input[type=number] { -moz-appearance: textfield; }
   .animate-fade-in,
   .animate-fade-in-up,
   .animate-slide-in-left,
-  .animate-slide-out-left,
   .animate-pulse-gold,
-  .animate-spin-gold,
-  .animate-shimmer,
   .row-stagger {
     animation: none !important;
     opacity: 1 !important;
@@ -370,8 +341,7 @@ input[type=number] { -moz-appearance: textfield; }
   }
 
   /* Hide UI chrome entirely */
-  header, nav, .glass, .no-print, .er-tooltip, .animate-pulse-gold,
-  .animate-spin-gold, .animate-shimmer { display: none !important; }
+  header, nav, .glass, .no-print, .er-tooltip, .animate-pulse-gold { display: none !important; }
 
   /* Undo gold gradient text — use solid black for legibility on paper */
   .text-gold-grad {

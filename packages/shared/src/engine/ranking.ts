@@ -328,7 +328,6 @@ export function rankWeapons(
     const frostAmt = buffedWeaponAttack.attackPower[AttackPowerType.FROST]?.total ?? 0;
     const poisonAmt = buffedWeaponAttack.attackPower[AttackPowerType.POISON]?.total ?? 0;
     const rotAmt = buffedWeaponAttack.attackPower[AttackPowerType.SCARLET_ROT]?.total ?? 0;
-    const rawStatusAmt = bleedAmt + frostAmt + poisonAmt + rotAmt;
 
     // Status proc damage: compute actual proc damage (bleed 15% HP, frost 10% HP, etc.)
     // This replaces the old raw-status-AR sum with expected proc damage contribution.

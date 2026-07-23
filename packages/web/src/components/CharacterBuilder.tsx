@@ -124,8 +124,8 @@ export function CharacterBuilder() {
       </div>
 
       {/* Rune Level display with PvP meta warning */}
-      <div className="mb-3 p-2 rounded bg-er-bg/60 border border-er-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="mb-3 p-2.5 rounded-lg bg-er-bg/60 border border-er-border">
+        <div className="flex items-baseline gap-2">
           <span className="text-xs text-gray-400">Rune Level</span>
           <motion.span
             key={runeLevel}
@@ -137,7 +137,7 @@ export function CharacterBuilder() {
             RL{runeLevel}
           </motion.span>
         </div>
-        <div className="text-xs text-gray-500 flex items-center gap-1.5">
+        <div className="mt-1 text-xs flex flex-wrap items-center gap-x-2 gap-y-0.5">
           {overMeta.length > 0 && (
             <span className="text-yellow-500/80">
               {'⚠ Above RL' + overMeta[overMeta.length - 1]}
@@ -173,10 +173,10 @@ export function CharacterBuilder() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-2 gap-2">
         {STAT_KEYS.map((key) => (
-          <div key={key} className="flex items-center gap-2">
-            <label className="text-xs text-gray-400 w-8 text-right font-medium">
+          <div key={key} className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-400 w-7 text-right font-medium shrink-0">
               {STAT_LABELS[key]}
             </label>
             <input
@@ -187,7 +187,7 @@ export function CharacterBuilder() {
               onChange={(e) =>
                 setStats({ ...stats, [key]: Math.max(1, Math.min(99, parseInt(e.target.value) || 1)) })
               }
-              className="w-16 bg-er-bg border border-er-border rounded px-2 py-1 text-sm text-gray-200 focus:border-er-gold focus:outline-none transition-er"
+              className="w-full min-w-0 bg-er-bg border border-er-border rounded px-2 py-1 text-sm text-gray-200 focus:border-er-gold focus:outline-none transition-er"
             />
           </div>
         ))}
