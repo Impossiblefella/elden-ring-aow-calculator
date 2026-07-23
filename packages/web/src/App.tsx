@@ -59,6 +59,7 @@ interface BuildState {
   twoHanding: boolean;
   setTwoHanding: (b: boolean) => void;
   buffIds: string[];
+  setBuffIds: (ids: string[]) => void;
   toggleBuff: (id: string) => void;
   enemyId: string;
   setEnemyId: (id: string) => void;
@@ -123,7 +124,7 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
       stats, setStats,
       upgradeLevel, setUpgradeLevel: handleUpgrade,
       twoHanding, setTwoHanding,
-      buffIds, toggleBuff,
+      buffIds, setBuffIds, toggleBuff,
       enemyId, setEnemyId,
       weapons, serverStatus,
       ngCycle, setNgCycle,

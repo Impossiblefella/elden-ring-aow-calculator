@@ -47,6 +47,8 @@ export interface Buff {
   allDamageMultiplier?: number;
   /** Only applies to specific damage types. */
   applicableTypes?: AttackPowerType[];
+  /** Ash-of-War damage multiplier (e.g. 0.15 = +15% AoW damage). */
+  aowMultiplier?: number;
 }
 
 // ── Predefined buffs ──────────────────────────────────────────────────────────
@@ -91,9 +93,9 @@ export const BUFF_LIBRARY: Buff[] = [
   },
   {
     id: "shard-of-alexander",
-    name: "Shard of Alexander (AoW)",
+    name: "Shard of Alexander",
     category: "talisman",
-    allDamageMultiplier: 0.15, // +15% to Ash of War damage
+    aowMultiplier: 0.15, // +15% to Ash of War damage
   },
   {
     id: "magic-scorpion-talisman",
@@ -126,6 +128,55 @@ export const BUFF_LIBRARY: Buff[] = [
     multipliers: {
       [AttackPowerType.HOLY]: 0.12,
     },
+  },
+  {
+    id: "ritual-sword-talisman",
+    name: "Ritual Sword Talisman",
+    category: "talisman",
+    allDamageMultiplier: 0.10, // +10% damage at full HP (simplified: unconditional)
+  },
+  {
+    id: "rotten-winged-sword-insignia",
+    name: "Rotten Winged Sword Insignia",
+    category: "talisman",
+    allDamageMultiplier: 0.15, // +15% on consecutive hits (simplified: unconditional)
+  },
+  {
+    id: "millicents-prosthesis",
+    name: "Millicent's Prosthesis",
+    category: "talisman",
+    allDamageMultiplier: 0.05, // +5% AR
+  },
+  {
+    id: "flocks-canvas-talisman",
+    name: "Flock's Canvas Talisman",
+    category: "talisman",
+    multipliers: {
+      [AttackPowerType.MAGIC]: 0.08,
+      [AttackPowerType.FIRE]: 0.08,
+      [AttackPowerType.LIGHTNING]: 0.08,
+      [AttackPowerType.HOLY]: 0.08,
+    }, // +8% incantation damage
+  },
+  {
+    id: "graven-mass-talisman",
+    name: "Graven-Mass Talisman",
+    category: "talisman",
+    multipliers: {
+      [AttackPowerType.MAGIC]: 0.08, // +8% sorcery damage
+    },
+  },
+  {
+    id: "raptor-black-feathers",
+    name: "Raptor's Black Feathers",
+    category: "talisman",
+    aowMultiplier: 0.10, // +10% jump attack damage (AoW-style multiplier)
+  },
+  {
+    id: "two-headed-turtle-talisman",
+    name: "Two-Headed Turtle Talisman",
+    category: "talisman",
+    // Stamina recovery — non-damage; included for completeness
   },
   {
     id: "crimson-amber-medallion",
@@ -311,6 +362,9 @@ export function applyBuffs(
     }
 
     // Talismans: all stack multiplicatively.
+    // NOTE: aowMultiplier is NOT applied here — it only affects Ash of War
+    // damage, not normal weapon AR. It is consumed separately by the AoW
+    // ranking system (see ranking.ts).
     let talismanMult = 1;
     for (const t of talismans) {
       const m = (t.allDamageMultiplier ?? 0) + (t.multipliers?.[apt] ?? 0);

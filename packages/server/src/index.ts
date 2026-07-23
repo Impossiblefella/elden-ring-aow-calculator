@@ -163,6 +163,7 @@ app.get("/api/buffs", (_req, res) => {
     allDamageMultiplier: b.allDamageMultiplier,
     multipliers: b.multipliers,
     applicableTypes: b.applicableTypes,
+    aowMultiplier: b.aowMultiplier,
   })));
 });
 
@@ -356,6 +357,12 @@ app.post("/api/damage", (req, res) => {
   const ngHpMult = 1 + ngCycle * 0.1;
   const enemyHp = enemy.hp ? Math.round(enemy.hp * ngHpMult) : undefined;
 
+  // NG+ defense multiplier — scales enemy defence flat values.
+  // Defences scale by a small amount per NG+ cycle (≈1% per cycle → NG+7 = +7%),
+  // increasing the reduction of the non-linear defense curve at higher cycles.
+  // Absorption is a percentage and does NOT scale with NG+.
+  const ngDefMult = 1 + ngCycle * 0.01;
+
   // Apply enemy defence + absorption per damage type
   const enemyDamages: Record<AttackPowerType, number> = {} as Record<AttackPowerType, number>;
   for (const apt of allDamageTypes) {
@@ -363,7 +370,8 @@ app.post("/api/damage", (req, res) => {
     if (!ar) continue;
     // Apply crit modifier to damage
     ar = ar * critModifier;
-    const def = enemy.defence[apt] ?? 0;
+    // Scale flat defence by the NG+ defence multiplier; absorption stays as-is
+    const def = (enemy.defence[apt] ?? 0) * ngDefMult;
     const abs = enemy.absorption[apt] ?? 0;
     enemyDamages[apt] = round(
       damageAgainstEnemy({
@@ -1141,6 +1149,7 @@ app.post("/api/rank", (req, res) => {
     metric,
     enemy,
     twoHanding,
+    buffIds,
   });
 
   res.json({
@@ -1181,7 +1190,6 @@ function serializeAttackRatingResult(r: AttackRatingResult) {
       ]),
     ),
     totalAR: round(getTotalAttackRating(r)),
-    totalARWithStatus: round(getTotalAttackRating(r)),
     weapon: {
       id: r.weapon.id,
       name: r.weapon.name,

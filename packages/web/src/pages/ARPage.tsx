@@ -428,12 +428,6 @@ export function ARPage() {
             selected={selectedWeapon}
             onSelect={setSelectedWeapon}
           />
-          {resultA && resultB && mode === 'compare' && (
-            <div className="bg-er-surface rounded-lg border border-er-border p-4 card-glow">
-              <p className="font-er text-gold-grad mb-2">Damage Comparison</p>
-              <DamageCompare resultA={resultA} resultB={resultB} />
-            </div>
-          )}
           {resultA && <DamagePanel result={resultA} enemyId={enemyId} enemies={enemies} onEnemyChange={setEnemyId} />}
         </div>
       )}
@@ -665,7 +659,16 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
                 {result.enemy.ngCycle ? ` (NG+${result.enemy.ngCycle})` : ''}
               </span></span>
             )}
-            <span>🛡️ Abs: <span className="text-er-fg">
+            <span>🛡️ Def: <span className="text-er-fg">
+              {[
+                selectedEnemy.defence[0] != null && `PHYS ${Math.round(selectedEnemy.defence[0] * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`,
+                selectedEnemy.defence[1] != null && `MAG ${Math.round(selectedEnemy.defence[1] * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`,
+                selectedEnemy.defence[2] != null && `FIRE ${Math.round(selectedEnemy.defence[2] * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`,
+                selectedEnemy.defence[3] != null && `LIGH ${Math.round(selectedEnemy.defence[3] * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`,
+                selectedEnemy.defence[4] != null && `HOLY ${Math.round(selectedEnemy.defence[4] * (1 + (result.enemy.ngCycle ?? 0) * 0.01))}`,
+              ].filter(Boolean).join(' / ')}
+            </span></span>
+            <span>🟫 Abs: <span className="text-er-fg">
               {[
                 selectedEnemy.absorption[0] != null && `PHYS ${selectedEnemy.absorption[0]}%`,
                 selectedEnemy.absorption[1] != null && `MAG ${selectedEnemy.absorption[1]}%`,
@@ -771,18 +774,4 @@ function DamagePanel({ result, enemyId, enemies, onEnemyChange }: {
   );
 }
 
-// ── Damage compare (simple, used in single mode when both exist) ───────────────
-function DamageCompare({ resultA, resultB }: { resultA: DamageResponse; resultB: DamageResponse }) {
-  return (
-    <div className="grid grid-cols-2 gap-4 text-sm">
-      <div className="text-right">
-        <span className="text-er-muted">A Total: </span>
-        <span className="text-er-gold font-bold">{Math.round(resultA.enemyDamageTotal).toLocaleString()}</span>
-      </div>
-      <div>
-        <span className="text-er-muted">B Total: </span>
-        <span className="text-er-gold font-bold">{Math.round(resultB.enemyDamageTotal).toLocaleString()}</span>
-      </div>
-    </div>
-  );
-}
+// ── End of file — DamageCompare removed (was unused after compare-mode UI refactor)

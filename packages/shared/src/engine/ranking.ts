@@ -16,6 +16,7 @@ import {
 } from "./aow";
 import { damageAgainstEnemy } from "./defense";
 import { getMotionValueTable } from "./motion-values";
+import { applyBuffs, getBuff } from "./buffs";
 import type { Enemy } from "./enemy";
 
 export type RankingMetric =
@@ -32,6 +33,7 @@ export interface RankingOptions {
   enemy?: Enemy;
   metric?: RankingMetric;
   twoHanding?: boolean;
+  buffIds?: string[];
 }
 
 export interface RankingEntry {
@@ -92,7 +94,19 @@ export function rankWeapons(
   options: RankingOptions,
 ): RankingEntry[] {
   const metric = options.metric ?? "total";
+  const buffIds = options.buffIds ?? [];
   const entries: RankingEntry[] = [];
+
+  // Compute the AoW-specific multiplier from talismans (e.g. Shard of
+  // Alexander +15%, Raptor's Black Feathers +10%). These multiply the
+  // final AoW damage but do NOT affect normal weapon AR.
+  let aowMult = 1;
+  for (const id of buffIds) {
+    const buff = getBuff(id);
+    if (buff?.aowMultiplier) {
+      aowMult *= 1 + buff.aowMultiplier;
+    }
+  }
 
   for (const weapon of weapons) {
     if (!isWeaponCompatible(weapon, options.ashOfWar)) continue;
@@ -104,19 +118,40 @@ export function rankWeapons(
       twoHanding: options.twoHanding ?? false,
     });
 
+    // Apply normal buffs (aura, body, talisman, physick, greases) to AR.
+    // The aowMultiplier is handled separately below.
+    let buffedWeaponAttack = ar;
+    if (buffIds.length > 0) {
+      const buffResult = applyBuffs(ar, buffIds);
+      buffedWeaponAttack = {
+        ...ar,
+        attackPower: Object.fromEntries(
+          Object.entries(ar.attackPower).map(([k, v]) => {
+            const buffed = buffResult.attackPower[Number(k) as AttackPowerType];
+            return [k, v ? { ...v, total: buffed ?? v.total } : v];
+          }),
+        ) as typeof ar.attackPower,
+      };
+    }
+
     // Calculate AoW damage based on type
     let skillDamage: Partial<Record<AttackPowerType, number>>;
     let aowType: "simple" | "enhanced" | "projectile";
 
     if (options.ashOfWar.isProjectile) {
-      skillDamage = calculateBulletHitDamage(ar, options.ashOfWar, options.attributes);
+      skillDamage = calculateBulletHitDamage(buffedWeaponAttack, options.ashOfWar, options.attributes);
       aowType = "projectile";
     } else if (options.ashOfWar.baseDamage > 0) {
-      skillDamage = calculateEnhancedHitDamage(ar, options.ashOfWar, options.attributes);
+      skillDamage = calculateEnhancedHitDamage(buffedWeaponAttack, options.ashOfWar, options.attributes);
       aowType = "enhanced";
     } else {
-      skillDamage = calculateSkillHitDamage(ar, options.ashOfWar);
+      skillDamage = calculateSkillHitDamage(buffedWeaponAttack, options.ashOfWar);
       aowType = "simple";
+    }
+
+    // Apply AoW-specific multiplier (Shard of Alexander, Raptor's Black Feathers)
+    for (const apt of allDamageTypes) {
+      if (skillDamage[apt]) skillDamage[apt] = skillDamage[apt]! * aowMult;
     }
 
     // Apply enemy defence + absorption if provided
@@ -130,11 +165,11 @@ export function rankWeapons(
       for (const apt of allDamageTypes) skillTotal += skillDamage[apt] ?? 0;
     }
 
-    // Status buildup: frost + bleed + poison + scarlet rot
-    const bleedAmt = ar.attackPower[AttackPowerType.BLEED]?.total ?? 0;
-    const frostAmt = ar.attackPower[AttackPowerType.FROST]?.total ?? 0;
-    const poisonAmt = ar.attackPower[AttackPowerType.POISON]?.total ?? 0;
-    const rotAmt = ar.attackPower[AttackPowerType.SCARLET_ROT]?.total ?? 0;
+    // Status buildup: frost + bleed + poison + scarlet rot (use buffed AR for greases)
+    const bleedAmt = buffedWeaponAttack.attackPower[AttackPowerType.BLEED]?.total ?? 0;
+    const frostAmt = buffedWeaponAttack.attackPower[AttackPowerType.FROST]?.total ?? 0;
+    const poisonAmt = buffedWeaponAttack.attackPower[AttackPowerType.POISON]?.total ?? 0;
+    const rotAmt = buffedWeaponAttack.attackPower[AttackPowerType.SCARLET_ROT]?.total ?? 0;
     const statusAmt = bleedAmt + frostAmt + poisonAmt + rotAmt;
 
     // Stance damage from the AoW

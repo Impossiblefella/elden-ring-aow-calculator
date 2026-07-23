@@ -52,6 +52,7 @@ export interface BuffInfo {
   allDamageMultiplier?: number;
   multipliers?: Record<number, number>;
   applicableTypes?: number[];
+  aowMultiplier?: number;
 }
 
 export interface AttackPowerParts {
@@ -66,7 +67,6 @@ export interface AttackRatingResponse {
   ineffectiveAttackPowerTypes: number[];
   attackPower: Record<number, AttackPowerParts | null>;
   totalAR: number;
-  totalARWithStatus: number;
   weapon: { id: number; name: string; weaponType: string; affinityName: string };
 }
 
