@@ -167,6 +167,39 @@ export interface OptimalBuildResponse {
   }[];
 }
 
+export interface PvPDamageResponse extends AttackRatingResponse {
+  pvpConstants: {
+    flatDefense: number;
+    damageScalar: number;
+    statusMultiplier: number;
+  };
+  target: {
+    hp: number;
+    absorption: Record<number, number>;
+    extraNegation: number;
+  };
+  pvpDamages: Record<number, number>;
+  pvpDamageTotal: number;
+  hitsToKill: number;
+  pvpStatus: {
+    bleed: number;
+    frost: number;
+    poison: number;
+    scarletRot: number;
+    total: number;
+    hitsToProc: {
+      bleed: number;
+      frost: number;
+      poison: number;
+      scarletRot: number;
+    };
+  };
+  activeBuffs?: { id: string; name: string; category: string }[];
+  powerStance?: boolean;
+  critModifier?: number;
+  charged?: boolean;
+}
+
 export const api = {
   getWeapons: () => fetchJson<WeaponListItem[]>('/weapons'),
   getEnemies: () => fetchJson<EnemyInfo[]>('/enemies'),
@@ -177,6 +210,8 @@ export const api = {
     fetchJson<AttackRatingResponse>('/attack-rating', { method: 'POST', body: JSON.stringify(body) }),
   postDamage: (body: Record<string, unknown>) =>
     fetchJson<DamageResponse>('/damage', { method: 'POST', body: JSON.stringify(body) }),
+  postPvpDamage: (body: Record<string, unknown>) =>
+    fetchJson<PvPDamageResponse>('/pvp-damage', { method: 'POST', body: JSON.stringify(body) }),
   postRank: (body: Record<string, unknown>) =>
     fetchJson<RankResponse>('/rank', { method: 'POST', body: JSON.stringify(body) }),
   postCompare: (body: Record<string, unknown>) =>

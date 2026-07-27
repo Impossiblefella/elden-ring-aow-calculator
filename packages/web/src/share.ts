@@ -35,6 +35,8 @@ export interface BuildStateForShare {
   critModifier: number;
   charged: boolean;
   includeDLC: boolean;
+  pvpMode?: boolean;
+  pvpTargetHp?: number;
 }
 
 /** Encode a build state into a compact URL hash string. */

@@ -41,6 +41,14 @@ import {
   calculateSkillHitDamage,
   calculateEnhancedHitDamage,
   damageAgainstEnemy,
+  damageAgainstPlayer,
+  damageAgainstPlayerMulti,
+  hitsToKillPvP,
+  pvpStatusProcDamage,
+  PVP_FLAT_DEFENSE,
+  PVP_DAMAGE_SCALAR,
+  PVP_STATUS_MULTIPLIER,
+  DEFAULT_PVP_HP,
   attackPowerTypeName,
   affinityName,
   weaponTypeName,
@@ -462,6 +470,153 @@ app.post("/api/damage", (req, res) => {
   });
 });
 
+// ── PvP damage endpoint ──────────────────────────────────────────────────────
+/**
+ * Computes outgoing damage against a hypothetical PvP player.
+ * Uses the flat-355-defense formula + 0.85 damage scalar + 0.25x status
+ * multiplier, per FromSoftware patch 1.09+.
+ *
+ * Body params (mirror /api/damage but no enemyId):
+ *  - weaponId, attributes, upgradeLevel, twoHanding
+ *  - buffIds[], powerStance, critModifier, charged
+ *  - targetHp            (default DEFAULT_PVP_HP=1900)
+ *  - targetAbsorption    (Partial<Record<AttackPowerType, number>> —
+ *                          armored target %s per type; default 0)
+ *  - targetNegationPercent (extra flat negation from armor sets; default 0)
+ */
+interface PvPDamageRequestBody extends AttackRatingRequestBody {
+  buffIds?: string[];
+  powerStance?: boolean;
+  critModifier?: number;
+  charged?: boolean;
+  targetHp?: number;
+  targetAbsorption?: Partial<Record<number, number>>;
+  targetNegationPercent?: number;
+}
+
+app.post("/api/pvp-damage", (req, res) => {
+  const weaponId = parseInt(String(loadBody(req.body, "weaponId")), 10);
+  const attributes = loadBody(req.body, "attributes") as CharacterStats;
+  const upgradeLevel = parseInt(String(loadBody(req.body, "upgradeLevel")), 10);
+  const twoHanding = Boolean(loadBody(req.body, "twoHanding", false) ?? false);
+  const buffIds = (loadBody(req.body, "buffIds", false) as string[]) ?? [];
+  const powerStance = Boolean(loadBody(req.body, "powerStance", false) ?? false);
+  const critModifier = Number(loadBody(req.body, "critModifier", false) ?? 1.0);
+  const charged = Boolean(loadBody(req.body, "charged", false) ?? false);
+  const targetHp = Number(loadBody(req.body, "targetHp", false) ?? DEFAULT_PVP_HP);
+  const targetNegationPercent = Number(loadBody(req.body, "targetNegationPercent", false) ?? 0);
+  const targetAbsorption = (loadBody(req.body, "targetAbsorption", false) as Partial<Record<number, number>>) ?? {};
+
+  const weapon = findWeaponById(weaponId);
+  let result = getWeaponAttack({
+    weapon,
+    attributes,
+    upgradeLevel: clampUpgrade(weapon, upgradeLevel),
+    twoHanding,
+  });
+
+  // Power stance doubles AR (same as PvE).
+  if (powerStance) {
+    const newAP = { ...result.attackPower };
+    for (const apt of allDamageTypes) {
+      if (result.attackPower[apt]) {
+        newAP[apt] = {
+          ...result.attackPower[apt]!,
+          total: result.attackPower[apt]!.total * 2,
+          weapon: result.attackPower[apt]!.weapon * 2,
+          scaled: result.attackPower[apt]!.scaled * 2,
+        };
+      }
+    }
+    result = { ...result, attackPower: newAP };
+  }
+
+  // Apply buffs the same way /api/damage does.
+  let activeBuffs: Buff[] = [];
+  if (buffIds.length > 0) {
+    const buffed = applyBuffs(result, buffIds);
+    activeBuffs = buffed.activeBuffs;
+    const newAP = { ...result.attackPower };
+    for (const apt of [...allDamageTypes, ...allStatusTypes]) {
+      const buffedVal = buffed.attackPower[apt];
+      if (buffedVal !== undefined && result.attackPower[apt]) {
+        newAP[apt] = {
+          ...result.attackPower[apt]!,
+          total: buffedVal,
+          scaled: buffedVal - result.attackPower[apt]!.weapon,
+        };
+      }
+    }
+    result = { ...result, attackPower: newAP };
+  }
+
+  // Per-damage-type PvP damage.
+  const pvpDamages: Record<AttackPowerType, number> = {} as Record<AttackPowerType, number>;
+  for (const apt of allDamageTypes) {
+    let ar = result.attackPower[apt]?.total ?? 0;
+    if (!ar) continue;
+    ar = ar * critModifier;
+    const dmg = damageAgainstPlayer({
+      attackRating: ar,
+      motion: charged ? 120 : 100,
+      absorptionPercent: (targetAbsorption[apt as number] ?? 0) + targetNegationPercent,
+    });
+    pvpDamages[apt] = round(dmg);
+  }
+  const pvpDamageTotal = round(Object.values(pvpDamages).reduce((a, b) => a + (b ?? 0), 0));
+  const hitsToKill = hitsToKillPvP(pvpDamageTotal, targetHp);
+
+  // PvP status proc contribution (expected per-hit damage from status procs).
+  const statusARs: Record<string, number> = {};
+  for (const apt of allStatusTypes) {
+    const ar = result.attackPower[apt]?.total ?? 0;
+    if (ar > 0) statusARs[apt] = ar;
+  }
+  const pvpStatus = pvpStatusProcDamage(
+    {
+      bleed: statusARs[AttackPowerType.BLEED],
+      frost: statusARs[AttackPowerType.FROST],
+      poison: statusARs[AttackPowerType.POISON],
+      scarletRot: statusARs[AttackPowerType.SCARLET_ROT],
+    },
+    targetHp,
+  );
+
+  res.json({
+    ...serializeAttackRatingResult(result),
+    pvpConstants: {
+      flatDefense: PVP_FLAT_DEFENSE,
+      damageScalar: PVP_DAMAGE_SCALAR,
+      statusMultiplier: PVP_STATUS_MULTIPLIER,
+    },
+    target: {
+      hp: targetHp,
+      absorption: targetAbsorption,
+      extraNegation: targetNegationPercent,
+    },
+    pvpDamages,
+    pvpDamageTotal,
+    hitsToKill,
+    pvpStatus: {
+      bleed: round(pvpStatus.bleed),
+      frost: round(pvpStatus.frost),
+      poison: round(pvpStatus.poison),
+      scarletRot: round(pvpStatus.scarletRot),
+      total: round(pvpStatus.total),
+      hitsToProc: {
+        bleed: pvpStatus.hitsToProc.bleed,
+        frost: pvpStatus.hitsToProc.frost,
+        poison: pvpStatus.hitsToProc.poison,
+        scarletRot: pvpStatus.hitsToProc.scarletRot,
+      },
+    },
+    activeBuffs: activeBuffs.map((b) => ({ id: b.id, name: b.name, category: b.category })),
+    powerStance,
+    critModifier,
+    charged,
+  });
+});
+
 interface RankRequestBody {
   ashOfWar: AshOfWarEntry;
   attributes: CharacterStats;
@@ -784,6 +939,348 @@ const ashOfWarCatalog: AshOfWarEntry[] = [
     poiseDamage: 40,
     isProjectile: false,
   },
+
+  // ── New Enhanced Hit AoWs (IDs 850-862) ───────────────────────────────────
+  {
+    id: 850,
+    name: "War Cry",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      19 as WeaponType,  // GREATAXE
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.HEAVY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 120,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
+  },
+  {
+    id: 851,
+    name: "Braggart's Roar",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+      19 as WeaponType,  // GREATAXE
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.HEAVY, AffinityId.STANDARD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 140,
+    baseBulletDamage: {},
+    poiseDamage: 45,
+    isProjectile: false,
+  },
+  {
+    id: 852,
+    name: "Hoarfrost Stomp",
+    compatibleWeaponTypes: [
+      3 as WeaponType,   // STRAIGHT_SWORD
+      5 as WeaponType,   // GREATSWORD
+      9 as WeaponType,   // CURVED_SWORD
+      13 as WeaponType,  // KATANA
+      17 as WeaponType,  // AXE
+      25 as WeaponType,  // SPEAR
+    ],
+    compatibleAffinities: [AffinityId.COLD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+      [AttackPowerType.FROST]: 200,
+    },
+    baseDamage: 200,
+    baseBulletDamage: {},
+    poiseDamage: 35,
+    isProjectile: false,
+  },
+  {
+    id: 853,
+    name: "Golden Land",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      19 as WeaponType,  // GREATAXE
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.SACRED],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 250,
+    baseBulletDamage: {},
+    poiseDamage: 50,
+    isProjectile: false,
+  },
+  {
+    id: 854,
+    name: "Carian Greatsword",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 280,
+    baseBulletDamage: {},
+    poiseDamage: 55,
+    isProjectile: false,
+  },
+  {
+    id: 855,
+    name: "Carian Grandeur",
+    compatibleWeaponTypes: [
+      3 as WeaponType,   // STRAIGHT_SWORD
+      5 as WeaponType,   // GREATSWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 200,
+    baseBulletDamage: {},
+    poiseDamage: 40,
+    isProjectile: false,
+  },
+  {
+    id: 856,
+    name: "Royal Knight's Resolve",
+    compatibleWeaponTypes: [
+      3 as WeaponType,   // STRAIGHT_SWORD
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      13 as WeaponType,  // KATANA
+      25 as WeaponType,  // SPEAR
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 80,
+    baseBulletDamage: {},
+    poiseDamage: 20,
+    isProjectile: false,
+  },
+  {
+    id: 857,
+    name: "Spinning Gravity",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 220,
+    baseBulletDamage: {},
+    poiseDamage: 60,
+    isProjectile: false,
+  },
+  {
+    id: 858,
+    name: "Black Flame Tornado",
+    compatibleWeaponTypes: [
+      7 as WeaponType,   // COLOSSAL_SWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.FLAME_ART],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+      [AttackPowerType.FIRE]: 300,
+    },
+    baseDamage: 300,
+    baseBulletDamage: {},
+    poiseDamage: 70,
+    isProjectile: false,
+  },
+  {
+    id: 859,
+    name: "Loretta's Slash",
+    compatibleWeaponTypes: [
+      11 as WeaponType,  // CURVED_GREATSWORD
+      13 as WeaponType,  // KATANA
+      27 as WeaponType,  // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 250,
+    baseBulletDamage: {},
+    poiseDamage: 50,
+    isProjectile: false,
+  },
+  {
+    id: 860,
+    name: "Aspects of the Crucible: Tail",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.SACRED],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+      [AttackPowerType.HOLY]: 200,
+    },
+    baseDamage: 230,
+    baseBulletDamage: {},
+    poiseDamage: 55,
+    isProjectile: false,
+  },
+  {
+    id: 861,
+    name: "Aspects of the Crucible: Wings",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      19 as WeaponType,  // GREATAXE
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.SACRED],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+      [AttackPowerType.HOLY]: 180,
+    },
+    baseDamage: 210,
+    baseBulletDamage: {},
+    poiseDamage: 50,
+    isProjectile: false,
+  },
+  {
+    id: 862,
+    name: "Moonlight Greatsword",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      27 as WeaponType,  // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.MAGIC]: 350,
+    },
+    poiseDamage: 40,
+    isProjectile: true,
+  },
+
+  // ── New Projectile AoWs (IDs 863-867) ──────────────────────────────────────
+  {
+    id: 863,
+    name: "Night-and-Flame Stance",
+    compatibleWeaponTypes: [
+      7 as WeaponType,  // COLOSSAL_SWORD
+    ],
+    compatibleAffinities: [AffinityId.FLAME_ART, AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.FIRE]: 300,
+      [AttackPowerType.MAGIC]: 300,
+    },
+    poiseDamage: 40,
+    isProjectile: true,
+  },
+  {
+    id: 864,
+    name: "Siluria's Woe",
+    compatibleWeaponTypes: [
+      25 as WeaponType,  // SPEAR
+      28 as WeaponType,  // GREAT_SPEAR
+    ],
+    compatibleAffinities: [AffinityId.LIGHTNING],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.LIGHTNING]: 320,
+    },
+    poiseDamage: 35,
+    isProjectile: true,
+  },
+  {
+    id: 865,
+    name: "Enchanted Shot",
+    compatibleWeaponTypes: [
+      33 as WeaponType,  // GLINTSTONE_STAFF (if applicable)
+      3 as WeaponType,   // STRAIGHT_SWORD
+    ],
+    compatibleAffinities: [AffinityId.MAGIC],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 80,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.MAGIC]: 180,
+    },
+    poiseDamage: 20,
+    isProjectile: true,
+  },
+  {
+    id: 866,
+    name: "Zamor Ice Storm",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+    ],
+    compatibleAffinities: [AffinityId.COLD],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 80,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.FROST]: 280,
+    },
+    poiseDamage: 45,
+    isProjectile: true,
+  },
+  {
+    id: 867,
+    name: "Cragblade",
+    compatibleWeaponTypes: [
+      3 as WeaponType,   // STRAIGHT_SWORD
+      5 as WeaponType,   // GREATSWORD
+      13 as WeaponType,  // KATANA
+      25 as WeaponType,  // SPEAR
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {
+      [AttackPowerType.PHYSICAL]: 150,
+    },
+    poiseDamage: 30,
+    isProjectile: true,
+  },
+
+  // ── New Simple Skill Hit AoWs (IDs 868-873) ────────────────────────────────
 
   // ── Simple skill hit AoWs (isProjectile=false, baseDamage=0) ──────────────
   {
@@ -1490,6 +1987,109 @@ const ashOfWarCatalog: AshOfWarEntry[] = [
     },
     poiseDamage: 22,
     isProjectile: true,
+  },
+
+  // ── Additional Simple Skill Hit AoWs (IDs 868-873) ─────────────────────────
+  {
+    id: 868,
+    name: "Roar",
+    compatibleWeaponTypes: [
+      5 as WeaponType,   // GREATSWORD
+      7 as WeaponType,   // COLOSSAL_SWORD
+      11 as WeaponType,  // CURVED_GREATSWORD
+      19 as WeaponType,  // GREATAXE
+      23 as WeaponType,  // GREAT_HAMMER
+      29 as WeaponType,  // HALBERD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.HEAVY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 25,
+    isProjectile: false,
+  },
+  {
+    id: 869,
+    name: "Regal Beastcloister",
+    compatibleWeaponTypes: [
+      5 as WeaponType,  // GREATSWORD
+      27 as WeaponType, // LIGHT_GREATSWORD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 35,
+    isProjectile: false,
+  },
+  {
+    id: 870,
+    name: "GREATsword of Damnation",
+    compatibleWeaponTypes: [
+      7 as WeaponType,  // COLOSSAL_SWORD
+    ],
+    compatibleAffinities: [AffinityId.FLAME_ART],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 50,
+    isProjectile: false,
+  },
+  {
+    id: 871,
+    name: "Pike Ponch",
+    compatibleWeaponTypes: [
+      25 as WeaponType,  // SPEAR
+      28 as WeaponType,  // GREAT_SPEAR
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 110,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
+  },
+  {
+    id: 872,
+    name: "Impaling Strike",
+    compatibleWeaponTypes: [
+      15 as WeaponType,  // THRUSTING_SWORD
+      16 as WeaponType,  // HEAVY_THRUSTING_SWORD
+    ],
+    compatibleAffinities: [AffinityId.STANDARD, AffinityId.QUALITY],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 120,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 35,
+    isProjectile: false,
+  },
+  {
+    id: 873,
+    name: "Bleed Siphon",
+    compatibleWeaponTypes: [
+      13 as WeaponType,  // KATANA
+      22 as WeaponType,  // GREAT_KATANA
+      31 as WeaponType,  // BACKHAND_BLADE
+    ],
+    compatibleAffinities: [AffinityId.OCCULT],
+    damageMotionValues: {
+      [AttackPowerType.PHYSICAL]: 100,
+      [AttackPowerType.BLEED]: 100,
+    },
+    baseDamage: 0,
+    baseBulletDamage: {},
+    poiseDamage: 30,
+    isProjectile: false,
   },
 ];
 

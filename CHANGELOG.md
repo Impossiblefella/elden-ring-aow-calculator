@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.0.7 (2026-07-27)
+
+### PvP Mode (Headline Feature)
+
+- **PvP Damage Calculator** — all-new page (`/pvp`) with the flat-355-defense PvP formula (patch 1.09+): 0.85× damage scalar, 0.25× status buildup multiplier, realistic RL125-150 player HP pool
+- `damageAgainstPlayer()` engine — single-hit and multi-type PvP damage with absorption + negation
+- `hitsToKillPvP()` — ceil(HP / damage), color-coded by threat level (red ≤5 hits, yellow ≤10, green >10)
+- `pvpStatusProcDamage()` — expected per-hit damage from bleed/frost/poison/rot procs with hits-to-proc, using community-verified PvP thresholds (600 bleed, 600 frost, 600 poison, 1000 rot) and 400 resistance
+- **RL presets** — RL125 (Meta, 1900 HP), RL150 (High, 2100 HP), RL60 (Low, 1450 HP), RL200 (Max, 2200 HP) with preset absorption values
+- **Target HP slider** — adjustable 1000-2500 HP for custom PvP scenarios
+- **Per-damage-type breakdown** — animated bars showing each damage type's contribution
+- **Status proc panel** — per-status expected damage, hits-to-proc, with the 0.25× PvP nerf explanation
+- **Formula display** — shows the actual formula used: (AR × MV/100 × 0.85) × (1 − absorption%) − 355
+- `/api/pvp-damage` server endpoint — mirrors `/api/damage` but uses PvP formula; supports buffs, power stance, crit, charged
+- `api.postPvpDamage()` client + `PvPDamageResponse` type
+- **PvP nav tab** — "⚔ PvP" in the navigation bar with animated gold-pill styling
+- **Tab shortcut** — now cycles through 3 pages: AR → AoW → PvP
+- 17 new unit tests (83 total, all passing)
+
+### AoW Catalog Expansion
+
+- **22 new Ashes of War** (57 → 79 total)
+- New Enhanced Hit AoWs: War Cry, Braggart's Roar, Hoarfrost Stomp, Golden Land, Carian Greatsword, Carian Grandeur, Royal Knight's Resolve, Spinning Gravity, Black Flame Tornado, Loretta's Slash, Aspects of the Crucible: Tail, Aspects of the Crucible: Wings
+- New Projectile AoWs: Moonlight Greatsword, Night-and-Flame Stance, Siluria's Woe, Enchanted Shot, Zamor Ice Storm, Cragblade
+- New Simple Skill Hit AoWs: Roar, Regal Beastcloister, Pike Ponch, Impaling Strike, Bleed Siphon
+
+### UX / Polish
+
+- **Reset to defaults** — one-click button in Settings that clears all stats, buffs, toggles, and localStorage with confirmation prompt
+- **Shortcut help updated** — Tab shortcut description now mentions all 3 pages
+- PvP mode and target HP persisted to localStorage and share links
+
+---
+
 ## v1.0.4 (2026-07-22)
 
 ### Calculation Features

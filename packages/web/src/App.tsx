@@ -16,6 +16,7 @@ import { api, type WeaponListItem, type BuffInfo } from './api';
 import { CharacterBuilder, defaultStats, type CharStats } from './components/CharacterBuilder';
 import { ARPage } from './pages/ARPage';
 import { AoWPage } from './pages/AoWPage';
+import { PvPPage } from './pages/PvPPage';
 import { checkForSharedBuild, getShareURL, type BuildStateForShare } from './share';
 
 // ── localStorage persistence ─────────────────────────────────────────────────
@@ -32,6 +33,8 @@ interface PersistedBuild {
   critModifier: number;
   charged: boolean;
   includeDLC: boolean;
+  pvpMode?: boolean;
+  pvpTargetHp?: number;
 }
 
 function loadBuild(): Partial<PersistedBuild> {
@@ -78,6 +81,10 @@ interface BuildState {
   setCharged: (b: boolean) => void;
   includeDLC: boolean;
   setIncludeDLC: (b: boolean) => void;
+  pvpMode: boolean;
+  setPvpMode: (b: boolean) => void;
+  pvpTargetHp: number;
+  setPvpTargetHp: (n: number) => void;
 }
 
 const BuildContext = createContext<BuildState | null>(null);
@@ -102,13 +109,15 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
   const [critModifier, setCritModifier] = useState<number>(saved.critModifier ?? 1.0);
   const [charged, setCharged] = useState<boolean>(saved.charged ?? false);
   const [includeDLC, setIncludeDLC] = useState<boolean>(saved.includeDLC ?? true);
+  const [pvpMode, setPvpMode] = useState<boolean>(saved.pvpMode ?? false);
+  const [pvpTargetHp, setPvpTargetHp] = useState<number>(saved.pvpTargetHp ?? 1900);
   const [weapons, setWeapons] = useState<WeaponListItem[]>([]);
   const [serverStatus, setServerStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
 
   // Persist build state to localStorage whenever it changes.
   useEffect(() => {
-    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC });
-  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC]);
+    saveBuild({ stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, pvpMode, pvpTargetHp });
+  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, pvpMode, pvpTargetHp]);
 
   useEffect(() => {
     api.getHealth()
@@ -140,6 +149,8 @@ function BuildProvider({ children }: { children: React.ReactNode }) {
       critModifier, setCritModifier,
       charged, setCharged,
       includeDLC, setIncludeDLC,
+      pvpMode, setPvpMode,
+      pvpTargetHp, setPvpTargetHp,
     }}>
       {children}
     </BuildContext.Provider>
@@ -163,6 +174,7 @@ function AnimatedRoutes() {
           <Route path="/" element={<ARPage />} />
           <Route path="/ar" element={<ARPage />} />
           <Route path="/aow" element={<AoWPage />} />
+          <Route path="/pvp" element={<PvPPage />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -209,6 +221,21 @@ function NavBar() {
               {({ isActive }) => (
                 <>
                   <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>Ash of War</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
+            </NavLink>
+            <NavLink to="/pvp" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>⚔ PvP</span>
                   {isActive && (
                     <motion.div
                       layoutId="navIndicator"
@@ -315,7 +342,7 @@ function applyTheme(theme: 'dark' | 'light') {
 }
 
 function SettingsBox() {
-  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, setStats, setUpgradeLevel, setTwoHanding, setBuffIds, setEnemyId, setNgCycle, setPowerStance, setCritModifier, setCharged, setIncludeDLC } = useBuild();
+  const { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, pvpMode, pvpTargetHp, setStats, setUpgradeLevel, setTwoHanding, setBuffIds, setEnemyId, setNgCycle, setPowerStance, setCritModifier, setCharged, setIncludeDLC, setPvpMode, setPvpTargetHp } = useBuild();
   const [theme, setTheme] = useState<'dark' | 'light'>(getInitialTheme);
   const [buildName, setBuildName] = useState('');
   const [savedBuilds, setSavedBuilds] = useState<{name: string; data: PersistedBuild}[]>([]);
@@ -429,6 +456,28 @@ function SettingsBox() {
             ))}
           </div>
         )}
+      </div>
+      {/* Reset to defaults */}
+      <div className="border-t border-er-border pt-2 mt-2">
+        <button
+          onClick={() => {
+            if (!confirm('Reset all settings to defaults? This clears your current build, stats, buffs, and preferences.')) return;
+            setStats(defaultStats);
+            setUpgradeLevel(25);
+            setTwoHanding(false);
+            setBuffIds([]);
+            setEnemyId('malenia');
+            setNgCycle(0);
+            setPowerStance(false);
+            setCritModifier(1.0);
+            setCharged(false);
+            setIncludeDLC(true);
+            try { localStorage.removeItem(STORAGE_KEY); } catch {}
+          }}
+          className="w-full text-xs px-2 py-1 rounded bg-red-900/20 border border-red-900/40 text-red-400 hover:bg-red-900/30 hover:border-red-500/50 transition-er"
+        >
+          ↺ Reset to Defaults
+        </button>
       </div>
     </div>
   );
@@ -678,7 +727,7 @@ function BuffSelector() {
 
 function ShortcutHelp({ open, onClose }: { open: boolean; onClose: () => void }) {
   const SHORTCUTS = [
-    { key: 'Tab',    desc: 'Switch between Weapon AR and Ash of War pages' },
+    { key: 'Tab',    desc: 'Cycle: Weapon AR → Ash of War → PvP' },
     { key: '/',      desc: 'Focus search box' },
     { key: 'Escape', desc: 'Close modal/dialog' },
     { key: '?',      desc: 'Toggle this help' },
@@ -739,7 +788,10 @@ function AppInner() {
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        navigate(location.pathname === '/aow' ? '/ar' : '/aow');
+        const pages = ['/ar', '/aow', '/pvp'];
+        const currentIdx = pages.indexOf(location.pathname);
+        const nextIdx = currentIdx >= 0 ? (currentIdx + 1) % pages.length : 0;
+        navigate(pages[nextIdx]);
       } else if (e.key === '/') {
         e.preventDefault();
         const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;

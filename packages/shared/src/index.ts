@@ -9,3 +9,4 @@ export * from "./engine/enemy";
 export * from "./engine/motion-values";
 export * from "./engine/ranking";
 export * from "./engine/regulation";
+export * from "./engine/pvp";
