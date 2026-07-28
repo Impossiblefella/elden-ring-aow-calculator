@@ -45,6 +45,13 @@ export interface AshOfWarInfo {
   isProjectile: boolean;
   description?: string;
   fpCost?: number;
+  compatibleWeaponTypes?: number[];
+  compatibleAffinities?: number[];
+  damageMotionValues?: Record<number, number>;
+  baseDamage?: number;
+  baseBulletDamage?: Record<number, number>;
+  poiseDamage?: number;
+  chargeMultiplier?: number;
 }
 
 export interface BuffInfo {

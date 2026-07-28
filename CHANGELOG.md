@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.0.8 (2026-07-28)
+
+### New Pages & Tools
+
+- **Loadout Planner** (`/loadout`) — design full builds: pick AoW + 4 talisman slots + physick tear + buffs, see effective AR with all multipliers, talisman stacking conflict visualization (✓ stack / ⚠ conflict)
+- **Equip Load / Stamina Calculator** (`/equip-load`) — weapon + armor weight sliders, equip load gauge with colored zones (light/medium/heavy/over), roll type indicator, stamina costs per action
+- **Versus Mode + Survival Estimator** (`/versus`) — side-by-side enemy comparison, enemy HP scaled by NG cycle, absorption values, damage breakdown bars, hits-to-kill, incoming damage survival estimator with animated health bar drain
+- **Talisman Catalog** (`data/talismans.ts`) — 25 talismans with damage multipliers and stacking types (unique/aura/body/weapon), `getStackingInfo()` conflict checker
+
+### AoW Search & Detail
+
+- **Searchable AoW filter bar** — replaced plain dropdown with text search + 3 filter dropdowns (weapon type, damage type, skill category: projectile/enhanced/simple) + favorites toggle
+- **AoW detail modal** — click info button to see full motion values, compatible weapon types (named), compatible affinities, projectile flag, base damage, poise damage, FP cost
+- **Expanded AshOfWarInfo interface** — optional fields for compatibleWeaponTypes, compatibleAffinities, damageMotionValues, baseDamage, baseBulletDamage, poiseDamage, chargeMultiplier
+
+### Build Management
+
+- **Recent Builds History** — auto-tracks last 5 builds to localStorage, one-click restore from SettingsBox dropdown
+- **JSON Import** — paste exported build JSON to load a build, with error handling
+- **Community Build Gallery** — 5 preset builds (RL150 Bleed, RL80 STR, RL125 INT, RL150 FAI, DLC Messmer Slayer) with one-click load
+
+### Theme & UX Polish
+
+- **Dark theme polish** — brighter gold (#f5d570), brighter muted text, subtle vignette overlay for depth
+- **Weapon compare winner highlight** — #1 ranked row gets gold glow + 👑 crown marker
+- **Keyboard navigation** — Arrow Up/Down/PageUp/PageDown/Home/End to navigate weapon ranking table, Enter to search focused weapon
+- **NG+7 tooltip** — info tooltip next to enemy selector explaining NG+ cycle HP multiplier (NG+7 = 1.7× HP)
+- **DLC badge** — "DLC v1.14" gold badge in header when DLC content is enabled
+- **Contribute banner** — Star on GitHub / Contribute / Report Bug links in About box
+
+### Tests
+
+- **9 new ranking integration tests** (92 total, all passing) — weapon ranking sort order, sequential rank assignment, compatibility filtering, empty inputs, different AoW regression, upgrade level scaling
+
 ## v1.0.7 (2026-07-27)
 
 ### PvP Mode (Headline Feature)

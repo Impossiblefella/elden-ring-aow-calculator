@@ -17,6 +17,9 @@ import { CharacterBuilder, defaultStats, type CharStats } from './components/Cha
 import { ARPage } from './pages/ARPage';
 import { AoWPage } from './pages/AoWPage';
 import { PvPPage } from './pages/PvPPage';
+import { LoadoutPage } from './pages/LoadoutPage';
+import { EquipLoadPage } from './pages/EquipLoadPage';
+import { VersusPage } from './pages/VersusPage';
 import { checkForSharedBuild, getShareURL, type BuildStateForShare } from './share';
 
 // ── localStorage persistence ─────────────────────────────────────────────────
@@ -175,6 +178,9 @@ function AnimatedRoutes() {
           <Route path="/ar" element={<ARPage />} />
           <Route path="/aow" element={<AoWPage />} />
           <Route path="/pvp" element={<PvPPage />} />
+          <Route path="/loadout" element={<LoadoutPage />} />
+          <Route path="/equip-load" element={<EquipLoadPage />} />
+          <Route path="/versus" element={<VersusPage />} />
         </Routes>
       </motion.div>
     </AnimatePresence>
@@ -200,6 +206,12 @@ function NavBar() {
           }`}>
             {serverStatus}
           </span>
+          {/* DLC regulation badge */}
+          {includeDLC && (
+            <span className="text-xs px-2 py-0.5 rounded-full border border-er-gold/40 bg-er-gold/10 text-er-gold transition-er" title="Shadow of the Erdtree DLC data enabled">
+              DLC v1.14
+            </span>
+          )}
           {/* Page nav links */}
           <nav className="flex gap-1 ml-4 relative">
             <NavLink to="/ar" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
@@ -236,6 +248,51 @@ function NavBar() {
               {({ isActive }) => (
                 <>
                   <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>⚔ PvP</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
+            </NavLink>
+            <NavLink to="/loadout" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>🎒 Loadout</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
+            </NavLink>
+            <NavLink to="/equip-load" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>⚖ Equip</span>
+                  {isActive && (
+                    <motion.div
+                      layoutId="navIndicator"
+                      className="absolute inset-0 rounded btn-gold"
+                      initial={false}
+                      transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                    />
+                  )}
+                </>
+              )}
+            </NavLink>
+            <NavLink to="/versus" className="relative px-3 py-1 text-sm font-medium rounded transition-er text-gray-400 hover:text-er-gold hover:bg-er-border/20">
+              {({ isActive }) => (
+                <>
+                  <span className={isActive ? 'text-[#1a1a1a] relative z-10' : ''}>⚔ Versus</span>
                   {isActive && (
                     <motion.div
                       layoutId="navIndicator"
@@ -348,19 +405,36 @@ function SettingsBox() {
   const [savedBuilds, setSavedBuilds] = useState<{name: string; data: PersistedBuild}[]>([]);
   const [copied, setCopied] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importError, setImportError] = useState<string | null>(null);
+  const [recentBuilds, setRecentBuilds] = useState<PersistedBuild[]>([]);
 
   useEffect(() => {
     applyTheme(theme);
     try { localStorage.setItem(THEME_KEY, theme); } catch {}
   }, [theme]);
 
-  // Load saved builds from localStorage on mount
+  // Load saved builds and recent builds from localStorage on mount
   useEffect(() => {
     try {
       const raw = localStorage.getItem('er-aow-calc:saved-builds');
       if (raw) setSavedBuilds(JSON.parse(raw));
+      const recent = localStorage.getItem('er-aow-calc:recent-builds');
+      if (recent) setRecentBuilds(JSON.parse(recent));
     } catch {}
   }, []);
+
+  // Auto-save to recent builds whenever build changes
+  useEffect(() => {
+    const data: PersistedBuild = { stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, pvpMode, pvpTargetHp };
+    setRecentBuilds(prev => {
+      // Don't add if identical to most recent
+      if (prev.length > 0 && JSON.stringify(prev[0]) === JSON.stringify(data)) return prev;
+      const next = [data, ...prev.filter(b => JSON.stringify(b) !== JSON.stringify(data))].slice(0, 5);
+      try { localStorage.setItem('er-aow-calc:recent-builds', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, [stats, upgradeLevel, twoHanding, buffIds, enemyId, ngCycle, powerStance, critModifier, charged, includeDLC, pvpMode, pvpTargetHp]);
 
   const saveCurrentBuild = () => {
     if (!buildName.trim()) return;
@@ -404,9 +478,64 @@ function SettingsBox() {
       setShareCopied(true);
       setTimeout(() => setShareCopied(false), 2500);
     } catch {
-      // Fallback: select and prompt
       window.prompt('Copy this share link:', url);
     }
+  };
+
+  const importBuild = () => {
+    setImportError(null);
+    try {
+      const data = JSON.parse(importText) as Partial<PersistedBuild>;
+      if (!data.stats) throw new Error('Invalid build JSON: missing stats');
+      if (data.stats) setStats(data.stats as CharStats);
+      if (data.upgradeLevel !== undefined) setUpgradeLevel(data.upgradeLevel);
+      if (data.twoHanding !== undefined) setTwoHanding(data.twoHanding);
+      if (data.buffIds !== undefined) setBuffIds(data.buffIds);
+      if (data.enemyId !== undefined) setEnemyId(data.enemyId);
+      if (data.ngCycle !== undefined) setNgCycle(data.ngCycle);
+      if (data.powerStance !== undefined) setPowerStance(data.powerStance);
+      if (data.critModifier !== undefined) setCritModifier(data.critModifier);
+      if (data.charged !== undefined) setCharged(data.charged);
+      if (data.includeDLC !== undefined) setIncludeDLC(data.includeDLC);
+      if (data.pvpMode !== undefined) setPvpMode(data.pvpMode);
+      if (data.pvpTargetHp !== undefined) setPvpTargetHp(data.pvpTargetHp);
+      setImportText('');
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : 'Failed to parse build JSON');
+    }
+  };
+
+  const loadRecentBuild = (idx: number) => {
+    const d = recentBuilds[idx];
+    if (!d) return;
+    setStats(d.stats); setUpgradeLevel(d.upgradeLevel); setTwoHanding(d.twoHanding);
+    setBuffIds(d.buffIds); setEnemyId(d.enemyId); setNgCycle(d.ngCycle ?? 0);
+    setPowerStance(d.powerStance ?? false); setCritModifier(d.critModifier ?? 1.0); setCharged(d.charged ?? false);
+    if (d.includeDLC !== undefined) setIncludeDLC(d.includeDLC);
+    if (d.pvpMode !== undefined) setPvpMode(d.pvpMode);
+    if (d.pvpTargetHp !== undefined) setPvpTargetHp(d.pvpTargetHp);
+  };
+
+  // Community preset builds
+  const COMMUNITY_BUILDS: { name: string; desc: string; data: Partial<PersistedBuild> }[] = [
+    { name: 'RL150 Bleed', desc: 'Max bleed DPS — Occult affinity, high ARC', data: { stats: { vigor: 50, mind: 30, endurance: 25, str: 14, dex: 50, int: 9, fai: 8, arc: 60 }, upgradeLevel: 25, buffIds: ['blood-grease'], powerStance: false, critModifier: 1, charged: false, enemyId: 'malenia', ngCycle: 0, twoHanding: false } },
+    { name: 'RL80 STR', desc: 'Early-game strength build — Heavy affinity', data: { stats: { vigor: 40, mind: 20, endurance: 30, str: 60, dex: 14, int: 9, fai: 8, arc: 7 }, upgradeLevel: 25, buffIds: ['fire-grant-me-strength'], powerStance: false, critModifier: 1, charged: false, enemyId: '', ngCycle: 0, twoHanding: true } },
+    { name: 'RL125 INT', desc: 'Meta mage — Magic affinity, LHP', data: { stats: { vigor: 50, mind: 35, endurance: 20, str: 10, dex: 14, int: 80, fai: 8, arc: 7 }, upgradeLevel: 25, buffIds: ['magic-grease'], powerStance: false, critModifier: 1, charged: false, enemyId: 'malenia', ngCycle: 0, twoHanding: false } },
+    { name: 'RL150 FAI', desc: ' Faith nuke — Flame Art,catch flames', data: { stats: { vigor: 50, mind: 30, endurance: 25, str: 14, dex: 14, int: 9, fai: 80, arc: 7 }, upgradeLevel: 25, buffIds: ['golden-vow', 'fire-grease'], powerStance: false, critModifier: 1, charged: false, enemyId: 'malenia', ngCycle: 0, twoHanding: false } },
+    { name: 'DLC Messmer Slayer', desc: 'RL200 anti-boss build — Fire negation focus', data: { stats: { vigor: 60, mind: 30, endurance: 30, str: 50, dex: 50, int: 20, fai: 50, arc: 14 }, upgradeLevel: 25, buffIds: ['golden-vow', 'flame-grant-me-strength'], powerStance: false, critModifier: 1, charged: false, enemyId: 'messmer', ngCycle: 7, twoHanding: false } },
+  ];
+
+  const loadCommunityBuild = (build: { data: Partial<PersistedBuild> }) => {
+    const d = build.data;
+    if (d.stats) setStats(d.stats as CharStats);
+    if (d.upgradeLevel !== undefined) setUpgradeLevel(d.upgradeLevel);
+    if (d.twoHanding !== undefined) setTwoHanding(d.twoHanding);
+    if (d.buffIds !== undefined) setBuffIds(d.buffIds);
+    if (d.enemyId !== undefined) setEnemyId(d.enemyId);
+    if (d.ngCycle !== undefined) setNgCycle(d.ngCycle);
+    if (d.powerStance !== undefined) setPowerStance(d.powerStance);
+    if (d.critModifier !== undefined) setCritModifier(d.critModifier);
+    if (d.charged !== undefined) setCharged(d.charged);
   };
 
   return (
@@ -443,6 +572,54 @@ function SettingsBox() {
           <button onClick={shareLink} className="flex-1 text-xs px-2 py-1 rounded bg-er-gold/20 border border-er-gold/50 text-er-gold hover:bg-er-gold/30 transition-er">
             {shareCopied ? '✓ Link Copied!' : '🔗 Share Link'}
           </button>
+        </div>
+        {/* Import build JSON */}
+        <div className="space-y-1">
+          <textarea
+            value={importText}
+            onChange={e => setImportText(e.target.value)}
+            placeholder="Paste build JSON here..."
+            className="w-full px-2 py-1 bg-er-bg border border-er-border rounded text-xs font-mono text-gray-300 transition-er focus:border-er-gold focus:outline-none resize-none"
+            rows={2}
+          />
+          <button
+            onClick={importBuild}
+            disabled={!importText.trim()}
+            className="w-full text-xs px-2 py-1 rounded bg-er-border/30 border border-er-border text-gray-400 hover:text-er-gold hover:border-er-gold/30 transition-er disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+           📥 Import Build
+          </button>
+          {importError && <p className="text-xs text-red-400">{importError}</p>}
+        </div>
+        {/* Recent builds */}
+        {recentBuilds.length > 0 && (
+          <div className="space-y-1">
+            <p className="text-xs text-gray-500 uppercase mt-2">Recent (last {recentBuilds.length})</p>
+            {recentBuilds.map((b, i) => (
+              <button
+                key={i}
+                onClick={() => loadRecentBuild(i)}
+                className="w-full text-left text-xs px-2 py-1 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400 truncate"
+              >
+                {`#${i + 1} — VIG ${b.stats.vigor} STR ${b.stats.str} DEX ${b.stats.dex}`}
+              </button>
+            ))}
+          </div>
+        )}
+        {/* Community builds */}
+        <div className="space-y-1">
+          <p className="text-xs text-gray-500 uppercase mt-2">Community Builds</p>
+          {COMMUNITY_BUILDS.map(b => (
+            <button
+              key={b.name}
+              onClick={() => loadCommunityBuild(b)}
+              title={b.desc}
+              className="w-full text-left text-xs px-2 py-1 rounded bg-er-bg border border-er-border hover:border-er-gold hover:text-er-gold transition-er text-gray-400"
+            >
+              <span className="font-medium text-gray-300">{b.name}</span>
+              <span className="text-gray-600 ml-1">— {b.desc}</span>
+            </button>
+          ))}
         </div>
         {savedBuilds.length > 0 && (
           <div className="space-y-1 max-h-32 overflow-y-auto">
@@ -561,6 +738,43 @@ function AboutBox() {
         >
           🐙 GitHub
         </button>
+      </div>
+      {/* Contribute / community banner */}
+      <div className="mt-3 pt-3 border-t border-er-border/50">
+        <div className="flex items-center gap-2 text-xs">
+          <a
+            href="https://github.com/Impossiblefella/elden-ring-aow-calculator"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-er-gold hover:text-yellow-300 transition-er"
+          >
+            <span className="text-base">⭐</span>
+            <span>Star on GitHub</span>
+          </a>
+          <span className="text-gray-600">·</span>
+          <a
+            href="https://github.com/Impossiblefella/elden-ring-aow-calculator/blob/master/CONTRIBUTING.md"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-gray-400 hover:text-er-gold transition-er"
+          >
+            <span>🤝</span>
+            <span>Contribute</span>
+          </a>
+          <span className="text-gray-600">·</span>
+          <a
+            href="https://github.com/Impossiblefella/elden-ring-aow-calculator/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-gray-400 hover:text-er-gold transition-er"
+          >
+            <span>🐛</span>
+            <span>Report Bug</span>
+          </a>
+        </div>
+        <p className="mt-1.5 text-xs text-gray-600">
+          Open source · MIT License · Community-driven
+        </p>
       </div>
       {updateMsg && (
         <p className="mt-2 text-xs text-gray-400 animate-fade-in">{updateMsg}</p>

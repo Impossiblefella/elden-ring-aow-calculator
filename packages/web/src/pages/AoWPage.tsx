@@ -27,6 +27,12 @@ const DMG_NAMES: Record<number, string> = {
   5: 'Poison', 6: 'Scarlet Rot', 7: 'Bleed', 8: 'Frost', 9: 'Sleep', 10: 'Madness',
 };
 
+const AFFINITY_NAMES: Record<number, string> = {
+  0: 'Standard', 100: 'Heavy', 200: 'Keen', 300: 'Quality',
+  400: 'Fire', 500: 'Flame Art', 600: 'Lightning', 700: 'Sacred',
+  800: 'Magic', 900: 'Cold', 1000: 'Poison', 1100: 'Blood', 1200: 'Occult',
+};
+
 type SortKey = 'rank' | 'weaponName' | 'weaponType' | 'affinityName' | 'total' | 'projectile' | 'status' | 'stance' | 'dps';
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -112,11 +118,41 @@ export function AoWPage() {
   const [sortAsc, setSortAsc] = useState(true);
   const [limit, setLimit] = useState(50);
   const [compact, setCompact] = useState(false);
+  const [kbFocusRow, setKbFocusRow] = useState<number>(-1);
   const [aowFavorites, setAowFavorites] = useState<number[]>(() => {
     try { return JSON.parse(localStorage.getItem('er-aow-calc:aow-favorites') ?? '[]'); } catch { return []; }
   });
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showOptimalBuild, setShowOptimalBuild] = useState(false);
+  // AoW search/filter bar state
+  const [aowSearch, setAowSearch] = useState('');
+  const [aowWeaponTypeFilter, setAowWeaponTypeFilter] = useState('');
+  const [aowDamageTypeFilter, setAowDamageTypeFilter] = useState('');
+  const [aowCategoryFilter, setAowCategoryFilter] = useState('');
+  // AoW detail modal state
+  const [detailAsh, setDetailAsh] = useState<AshOfWarInfo | null>(null);
+
+  const WEAPON_TYPE_NAMES: Record<number, string> = {
+    3: 'Straight Sword', 5: 'Greatsword', 7: 'Colossal Sword', 9: 'Curved Sword',
+    11: 'Curved Greatsword', 13: 'Katana', 15: 'Thrusting Sword', 16: 'Heavy Thrusting Sword',
+    17: 'Axe', 19: 'Greataxe', 21: 'Hammer', 23: 'Great Hammer', 25: 'Spear',
+    27: 'Light Greatsword', 28: 'Great Spear', 29: 'Halberd', 22: 'Great Katana',
+    31: 'Backhand Blade',
+  };
+
+  const DMG_TYPE_OPTIONS = [
+    { value: '0', label: 'Physical' }, { value: '1', label: 'Magic' },
+    { value: '2', label: 'Fire' }, { value: '3', label: 'Lightning' },
+    { value: '4', label: 'Holy' }, { value: '7', label: 'Bleed' },
+    { value: '8', label: 'Frost' }, { value: '5', label: 'Poison' },
+    { value: '6', label: 'Scarlet Rot' },
+  ];
+
+  const CATEGORY_OPTIONS = [
+    { value: 'projectile', label: 'Projectile' },
+    { value: 'enhanced', label: 'Enhanced Hit' },
+    { value: 'simple', label: 'Simple Skill Hit' },
+  ];
 
   const toggleFavorite = (id: number) => {
     setAowFavorites(prev => {
@@ -145,8 +181,22 @@ export function AoWPage() {
     if (showFavoritesOnly && aowFavorites.length > 0) {
       result = result.filter(a => aowFavorites.includes(a.id));
     }
+    // Text search by name
+    if (aowSearch.trim()) {
+      const q = aowSearch.toLowerCase().trim();
+      result = result.filter(a => a.name.toLowerCase().includes(q));
+    }
+    // Category filter (projectile/enhanced/simple)
+    if (aowCategoryFilter) {
+      result = result.filter(a => {
+        if (aowCategoryFilter === 'projectile') return a.isProjectile;
+        if (aowCategoryFilter === 'enhanced') return !a.isProjectile && (a.baseDamage ?? 0) > 0;
+        if (aowCategoryFilter === 'simple') return !a.isProjectile && (a.baseDamage ?? 0) === 0;
+        return true;
+      });
+    }
     return result;
-  }, [sortedAshes, showFavoritesOnly, aowFavorites, includeDLC]);
+  }, [sortedAshes, showFavoritesOnly, aowFavorites, includeDLC, aowSearch, aowCategoryFilter]);
 
   useEffect(() => {
     api.getAshes().then(setAshes).catch(() => {});
@@ -210,6 +260,22 @@ export function AoWPage() {
 
   const displayResults = sortedResults.slice(0, limit);
 
+  // Keyboard nav on weapon ranking table
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (mode !== 'rank' || !displayResults.length) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+      if (e.key === 'ArrowDown' || e.key === 'PageDown') { e.preventDefault(); setKbFocusRow(p => Math.min(p + 1, displayResults.length - 1)); }
+      else if (e.key === 'ArrowUp' || e.key === 'PageUp') { e.preventDefault(); setKbFocusRow(p => Math.max(p - 1, 0)); }
+      else if (e.key === 'Home') { e.preventDefault(); setKbFocusRow(0); }
+      else if (e.key === 'End') { e.preventDefault(); setKbFocusRow(displayResults.length - 1); }
+      else if (e.key === 'Enter' && kbFocusRow >= 0 && kbFocusRow < displayResults.length) { e.preventDefault(); setSearchTerm(displayResults[kbFocusRow].weaponName); }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [mode, displayResults, kbFocusRow]);
+
   const handleSort = (key: SortKey) => {
     if (sortKey === key) setSortAsc(!sortAsc);
     else { setSortKey(key); setSortAsc(true); }
@@ -253,13 +319,13 @@ export function AoWPage() {
       {/* Controls */}
       <div className="bg-er-surface rounded-lg border border-er-border p-4 space-y-3 card-glow">
         <div className="flex flex-wrap gap-3 items-end">
-          <div>
+          <div className="flex-1 min-w-[260px]">
             <label className="block text-xs text-gray-400 mb-1">Ash of War</label>
             <div className="flex gap-1 items-end">
               <select
                 value={selectedAsh ?? ''}
                 onChange={(e) => setSelectedAsh(e.target.value ? parseInt(e.target.value) : null)}
-                className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none min-w-[200px]"
+                className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none flex-1 min-w-[180px]"
               >
                 <option value="">Select an Ash of War...</option>
                 {filteredAshes.map(a => (
@@ -275,7 +341,7 @@ export function AoWPage() {
                   className={`px-2 py-1.5 rounded border transition-er text-sm ${
                     aowFavorites.includes(selectedAsh)
                       ? 'bg-er-gold/20 border-er-gold/50 text-er-gold'
-                      : 'bg-er-bg border-er-border text-gray-400 hover:border-er-gold hover:text-er-gold'
+                      : 'bg-er-bg border border-er-border text-gray-400 hover:border-er-gold hover:text-er-gold'
                   }`}
                 >
                   {aowFavorites.includes(selectedAsh) ? '★' : '☆'}
@@ -292,18 +358,80 @@ export function AoWPage() {
               >
                 {showFavoritesOnly ? '★ Only' : '☆ All'}
               </button>
+              {selectedAsh !== null && (
+                <button
+                  onClick={() => setDetailAsh(ashes.find(a => a.id === selectedAsh) ?? null)}
+                  title="View AoW details"
+                  className="px-2 py-1.5 rounded border border-er-border bg-er-bg text-gray-400 hover:border-er-gold hover:text-er-gold transition-er text-sm"
+                >
+                  ℹ
+                </button>
+              )}
             </div>
+            {/* Search & filter row */}
+            <div className="flex flex-wrap gap-1 mt-1">
+              <input
+                type="text"
+                value={aowSearch}
+                onChange={e => setAowSearch(e.target.value)}
+                placeholder="Search AoW name..."
+                className="flex-1 min-w-[100px] px-2 py-1 bg-er-bg border border-er-border rounded text-xs text-gray-300 transition-er focus:border-er-gold focus:outline-none"
+              />
+              <select
+                value={aowCategoryFilter}
+                onChange={e => setAowCategoryFilter(e.target.value)}
+                className="px-2 py-1 bg-er-bg border border-er-border rounded text-xs text-gray-300 transition-er focus:border-er-gold focus:outline-none"
+              >
+                <option value="">All Categories</option>
+                {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+              <select
+                value={aowDamageTypeFilter}
+                onChange={e => setAowDamageTypeFilter(e.target.value)}
+                className="px-2 py-1 bg-er-bg border border-er-border rounded text-xs text-gray-300 transition-er focus:border-er-gold focus:outline-none"
+              >
+                <option value="">All Dmg Types</option>
+                {DMG_TYPE_OPTIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+              </select>
+              {(aowSearch || aowCategoryFilter || aowDamageTypeFilter) && (
+                <button
+                  onClick={() => { setAowSearch(''); setAowCategoryFilter(''); setAowDamageTypeFilter(''); }}
+                  className="px-2 py-1 rounded text-xs bg-er-bg border border-er-border text-gray-400 hover:text-red-400 hover:border-red-500/30 transition-er"
+                >
+                  ✕ Clear
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-gray-600 mt-0.5">{filteredAshes.length} of {ashes.length} ashes</p>
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Enemy</label>
-            <select
-              value={enemyId}
-              onChange={(e) => setEnemyId(e.target.value)}
-              className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none min-w-[180px]"
-            >
-              <option value="">No enemy (raw damage)</option>
-              {enemies.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
-            </select>
+            <div className="flex items-center gap-1">
+              <select
+                value={enemyId}
+                onChange={(e) => setEnemyId(e.target.value)}
+                className="bg-er-bg border border-er-border rounded px-3 py-1.5 text-sm text-gray-200 transition-er focus:border-er-gold focus:outline-none min-w-[180px]"
+              >
+                <option value="">No enemy (raw damage)</option>
+                {enemies.map(en => <option key={en.id} value={en.id}>{en.name}</option>)}
+              </select>
+              {enemyId && enemies.find(e => e.id === enemyId)?.hp && (
+                <span
+                  className="group relative cursor-help text-gray-500 hover:text-er-gold transition-er text-sm"
+                  title=""
+                >
+                  ℹ
+                  <div className="absolute z-30 left-0 top-7 hidden group-hover:block bg-er-surface border border-er-gold/30 rounded-lg p-3 shadow-xl w-52 text-xs">
+                    <p className="text-er-gold font-medium mb-1">{enemies.find(e => e.id === enemyId)?.name}</p>
+                    <div className="space-y-0.5 text-gray-400">
+                      <p>Base HP: {enemies.find(e => e.id === enemyId)?.hp?.toLocaleString()}</p>
+                      <p>NG+7 HP: <span className="text-red-300">{Math.round((enemies.find(e => e.id === enemyId)?.hp ?? 0) * 1.7).toLocaleString()}</span> (×1.7)</p>
+                      <p className="text-gray-500 mt-1 italic">NG+7 = base × (1 + 7 × 0.1)</p>
+                    </div>
+                  </div>
+                </span>
+              )}
+            </div>
           </div>
           <div>
             <label className="block text-xs text-gray-400 mb-1">Rank by</label>
@@ -464,7 +592,7 @@ export function AoWPage() {
                     key={r.weaponId}
                     className={`row-stagger border-b border-er-border/50 hover:bg-er-gold/5 transition-er ${
                       r.rank <= 3 ? 'bg-er-gold/5' : ''
-                    }`}
+                    } ${r.rank === 1 ? 'row-winner' : ''} ${kbFocusRow === i ? 'row-kb-focus' : ''}`}
                     style={{ animationDelay: `${Math.min(i * 20, 500)}ms` }}
                   >
                     <td className="py-1.5 px-3 text-right">
@@ -573,6 +701,126 @@ export function AoWPage() {
         buffIds={buffIds}
         setStats={useBuild().setStats}
       />
+
+      {/* AoW Detail Modal */}
+      <AnimatePresence>
+        {detailAsh && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setDetailAsh(null)}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={e => e.stopPropagation()}
+              className="bg-er-surface rounded-lg border border-er-gold/30 p-6 max-w-lg w-full mx-4 card-glow"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-er text-xl text-gold-grad">{detailAsh.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    {detailAsh.isProjectile && <span className="text-xs bg-er-gold/20 text-er-gold px-2 py-0.5 rounded">🔸 Projectile</span>}
+                    {!detailAsh.isProjectile && (detailAsh.baseDamage ?? 0) > 0 && <span className="text-xs bg-blue-900/30 text-blue-300 px-2 py-0.5 rounded">⚔ Enhanced Hit</span>}
+                    {!detailAsh.isProjectile && (detailAsh.baseDamage ?? 0) === 0 && <span className="text-xs bg-gray-700 text-gray-300 px-2 py-0.5 rounded">✦ Simple Skill</span>}
+                    {detailAsh.fpCost != null && <span className="text-xs text-gray-500">FP: {detailAsh.fpCost}</span>}
+                  </div>
+                </div>
+                <button onClick={() => setDetailAsh(null)} className="text-gray-400 hover:text-er-gold transition-er text-xl">✕</button>
+              </div>
+
+              {detailAsh.description && (
+                <p className="text-sm text-gray-400 mb-4 italic border-l-2 border-er-gold/30 pl-3">{detailAsh.description}</p>
+              )}
+
+              {/* Motion value breakdown */}
+              <div className="mb-4">
+                <p className="text-xs text-gray-500 uppercase mb-2">Damage Motion Values</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(detailAsh.baseDamage ?? 0) > 0 && (
+                    <div className="bg-er-bg/60 border border-er-border rounded px-3 py-2 text-sm">
+                      <span className="text-gray-500">Base Damage</span>
+                      <span className="text-gray-200 font-semibold ml-2">{(detailAsh.baseDamage ?? 0).toFixed(1)}</span>
+                    </div>
+                  )}
+                  {detailAsh.poiseDamage != null && detailAsh.poiseDamage > 0 && (
+                    <div className="bg-er-bg/60 border border-er-border rounded px-3 py-2 text-sm">
+                      <span className="text-gray-500">Poise Damage</span>
+                      <span className="text-gray-200 font-semibold ml-2">{detailAsh.poiseDamage}</span>
+                    </div>
+                  )}
+                  {detailAsh.chargeMultiplier != null && detailAsh.chargeMultiplier > 1 && (
+                    <div className="bg-er-bg/60 border border-er-border rounded px-3 py-2 text-sm">
+                      <span className="text-gray-500">Charge Mult</span>
+                      <span className="text-gray-200 font-semibold ml-2">{detailAsh.chargeMultiplier}×</span>
+                    </div>
+                  )}
+                  {detailAsh.fpCost != null && (
+                    <div className="bg-er-bg/60 border border-er-border rounded px-3 py-2 text-sm">
+                      <span className="text-gray-500">FP Cost</span>
+                      <span className="text-gray-200 font-semibold ml-2">{detailAsh.fpCost}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Projectile damage */}
+              {detailAsh.isProjectile && detailAsh.baseBulletDamage && Object.entries(detailAsh.baseBulletDamage).filter(([, v]) => v > 0).length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 uppercase mb-2">Projectile Damage</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {Object.entries(detailAsh.baseBulletDamage).filter(([, v]) => v > 0).map(([k, v]) => (
+                      <div key={k} className="bg-er-bg/60 border border-er-border rounded px-3 py-2 text-sm">
+                        <span className="text-gray-500">{DMG_NAMES[Number(k)] ?? k}</span>
+                        <span className="text-gray-200 font-semibold ml-2">{v.toFixed(0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Compatible weapon types */}
+              {detailAsh.compatibleWeaponTypes && detailAsh.compatibleWeaponTypes.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 uppercase mb-2">Compatible Weapon Types ({detailAsh.compatibleWeaponTypes.length})</p>
+                  <div className="flex flex-wrap gap-1">
+                    {detailAsh.compatibleWeaponTypes.map(wt => (
+                      <span key={wt} className="text-xs bg-er-bg border border-er-border rounded px-2 py-1 text-gray-300">
+                        {WEAPON_TYPE_NAMES[wt] ?? `Type ${wt}`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Compatible affinities */}
+              {detailAsh.compatibleAffinities && detailAsh.compatibleAffinities.length > 0 && (
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 uppercase mb-2">Compatible Affinities ({detailAsh.compatibleAffinities.length})</p>
+                  <div className="flex flex-wrap gap-1">
+                    {detailAsh.compatibleAffinities.map(af => (
+                      <span key={af} className="text-xs bg-er-gold/10 border border-er-gold/20 rounded px-2 py-1 text-er-gold/90">
+                        {AFFINITY_NAMES[af] ?? `Affinity ${af}`}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => { setSelectedAsh(detailAsh.id); setDetailAsh(null); }}
+                className="w-full mt-2 text-sm px-3 py-2 rounded btn-gold transition-er"
+              >
+                Use this Ash of War
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
